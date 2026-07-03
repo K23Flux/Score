@@ -60,4 +60,9 @@ public interface IScoreService {
      * 删除用户
      */
     ResultVo<?> deleteUser(String userName);
+
+    /**
+     * 查询学生名单
+     */
+    ResultVo<?> getStudent(AdminBo adminBo);
 }

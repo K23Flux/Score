@@ -326,4 +326,13 @@ public class ScoreServiceImpl implements IScoreService {
         lqw.eq(Score::getDelFlag, "0").orderByDesc(Score::getCreateTime);
         return lqw;
     }
+
+    @Override
+    public ResultVo<?> getStudent(AdminBo adminBo){
+        LambdaQueryWrapper<Student> lqw = new LambdaQueryWrapper<>();
+        if(adminBo!=null){
+            lqw.eq(StringUtils.hasText(adminBo.getClassName()), Student::getClassName, adminBo.getClassName());
+        }
+        return ResultVo.success(studentMapper.selectList(lqw));
+    }
 }

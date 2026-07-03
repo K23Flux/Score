@@ -76,4 +76,13 @@ public class ScoreCheckController {
         StpUtil.logout();
         return ResultVo.success("退出登录成功");
     }
+
+    /**
+     * 学生列表分页查询
+     */
+    @PostMapping("/getStudent")
+    public ResultVo<?> getStudent(@RequestBody AdminBo adminBo) {
+        log.info("教师:{}|查询学生",adminBo.getUserName());
+        return scoreService.getStudent(adminBo);
+    }
 }
