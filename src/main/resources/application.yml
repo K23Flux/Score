@@ -29,7 +29,7 @@ mybatis-plus:
   mapper-locations: classpath*:/mapper/**/*.xml
   configuration:
     map-underline-to-camel-case: true # 开启驼峰命名转换
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl # 在控制台打印 SQL 语句
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl # 生产环境关闭 SQL 日志，节省内存
   global-config:
     db-config:
       id-type: auto # 主键自增
@@ -47,7 +47,7 @@ sa-token:
   # 在多人登录同一账号时，是否共用一个 token （为 true 时所有登录共用一个 token, 为 false 时每次登录新建一个 token）
   is-share: false
   # token 风格（默认可取值：uuid、simple-uuid、random-32、random-64、random-128、tik）
-  token-style: uuid
+  token-style: simple-uuid
   # 是否输出操作日志
   is-log: false
 
@@ -59,7 +59,7 @@ management:
         include: health
   endpoint:
     health:
-      show-details: always
+      show-details: when-authorized
 
 #TianAi-CaptCha 配置
 captcha:
@@ -72,7 +72,7 @@ captcha:
     # 针对 点选验证码 过期时间设置为 2分钟， 因为点选验证码验证比较慢，把过期时间调整大一些
     WORD_IMAGE_CLICK: 20000
   # 使用加载系统自带的资源， 默认是 false(这里系统的默认资源包含 滑动验证码模板/旋转验证码模板,如果想使用系统的模板，这里设置为true)
-  init-default-resource: true
+  init-default-resource: false
   # 缓存控制， 默认为false不开启
   local-cache-enabled: false
   # 缓存开启后，验证码会提前缓存一些生成好的验证数据， 默认是20

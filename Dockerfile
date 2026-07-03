@@ -7,5 +7,5 @@ WORKDIR /app
 # 把本地jar包复制到容器里
 COPY score-0.0.1-SNAPSHOT.jar /app/app.jar
 
-# 启动命令（固定）
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# 启动命令（固定，加 JVM 内存限制）
+ENTRYPOINT ["java", "-XX:+UseG1GC", "-XX:MaxRAMPercentage=75.0", "-jar", "app.jar"]
