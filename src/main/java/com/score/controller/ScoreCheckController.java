@@ -81,8 +81,11 @@ public class ScoreCheckController {
      * 学生列表分页查询
      */
     @PostMapping("/getStudent")
-    public ResultVo<?> getStudent(@RequestBody AdminBo adminBo) {
-        log.info("教师:{}|查询学生",adminBo.getUserName());
-        return scoreService.getStudent(adminBo);
+    public ResultVo<?> getStudent(
+            @RequestBody(required = false) AdminBo adminBo,
+            @RequestParam(defaultValue = "1") Integer pageNum,
+            @RequestParam(defaultValue = "10") Integer pageSize) {
+        log.info("教师:{}|查询学生列表", adminBo != null ? adminBo.getUserName() : "unknown");
+        return scoreService.getStudent(adminBo, pageNum, pageSize);
     }
 }

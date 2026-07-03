@@ -60,3 +60,5 @@ fix_login3.py
 /src/main/resources/bgimages/
 /.idea/
 /docs/
+docker-compose.yml
+gittype.exe

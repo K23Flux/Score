@@ -62,7 +62,7 @@ public interface IScoreService {
     ResultVo<?> deleteUser(String userName);
 
     /**
-     * 查询学生名单
+     * 查询学生名单（分页）
      */
-    ResultVo<?> getStudent(AdminBo adminBo);
+    ResultVo<?> getStudent(AdminBo adminBo, Integer pageNum, Integer pageSize);
 }

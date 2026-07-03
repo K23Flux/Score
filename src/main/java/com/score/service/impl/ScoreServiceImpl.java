@@ -328,11 +328,15 @@ public class ScoreServiceImpl implements IScoreService {
     }
 
     @Override
-    public ResultVo<?> getStudent(AdminBo adminBo){
+    public ResultVo<?> getStudent(AdminBo adminBo, Integer pageNum, Integer pageSize){
+        // 从 session 获取当前教师的班级（多租户隔离）
+        String className = (String) StpUtil.getSession().get("className");
+
+        Page<Student> page = new Page<>(pageNum, pageSize);
         LambdaQueryWrapper<Student> lqw = new LambdaQueryWrapper<>();
-        if(adminBo!=null){
-            lqw.eq(StringUtils.hasText(adminBo.getClassName()), Student::getClassName, adminBo.getClassName());
-        }
-        return ResultVo.success(studentMapper.selectList(lqw));
+        lqw.eq(StringUtils.hasText(className), Student::getClassName, className)
+           .eq(StringUtils.hasText(adminBo.getClassName()), Student::getClassName, adminBo.getClassName())
+           .orderByDesc(Student::getCreateTime);
+        return ResultVo.success(studentMapper.selectPage(page, lqw));
     }
 }
