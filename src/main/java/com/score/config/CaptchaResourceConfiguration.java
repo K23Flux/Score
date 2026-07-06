@@ -31,6 +31,7 @@ public class CaptchaResourceConfiguration {
         resourceStore.addResource(CaptchaTypeConstant.SLIDER, new Resource("classpath", "bgimages/c.jpg", "default"));
         resourceStore.addResource(CaptchaTypeConstant.ROTATE, new Resource("classpath", "bgimages/48.jpg", "default"));
         resourceStore.addResource(CaptchaTypeConstant.CONCAT, new Resource("classpath", "bgimages/48.jpg", "default"));
+        resourceStore.addResource(CaptchaTypeConstant.WORD_IMAGE_CLICK,new Resource("classpath","bgimages/a.jpg","default"));
         return resourceStore;
     }
 }

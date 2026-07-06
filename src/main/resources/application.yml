@@ -72,7 +72,7 @@ captcha:
     # 针对 点选验证码 过期时间设置为 2分钟， 因为点选验证码验证比较慢，把过期时间调整大一些
     WORD_IMAGE_CLICK: 20000
   # 使用加载系统自带的资源， 默认是 false(这里系统的默认资源包含 滑动验证码模板/旋转验证码模板,如果想使用系统的模板，这里设置为true)
-  init-default-resource: false
+  init-default-resource: true
   # 缓存控制， 默认为false不开启
   local-cache-enabled: false
   # 缓存开启后，验证码会提前缓存一些生成好的验证数据， 默认是20
