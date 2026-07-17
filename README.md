@@ -1,0 +1,194 @@
+# Score Check — 轻量化成绩查询平台
+
+> 一款面向师生的成绩管理与查询系统，支持学生在线查分、教师批量导入与数据管理。
+
+## 功能概览
+
+| 角色 | 功能 |
+|------|------|
+| **学生** | 无需登录，凭姓名 + 身份证号查询个人成绩；按考试分组展示各科分数、总分与平均分；彩色等级标识（优秀/良好/及格/不及格） |
+| **教师** | 工作台总览、按学生/考试搜索成绩、Excel 批量导入学生与成绩数据、分页浏览学生名单、教师账号 CRUD；多租户隔离（教师仅可见本班数据） |
+
+## 技术栈
+
+**后端**
+
+- Java 17 + Spring Boot 3.2.10
+- MyBatis-Plus 3.5.7（ORM，多租户拦截器 + 分页插件）
+- MySQL 8.0
+- Sa-Token 1.45.0（认证与会话管理）
+- Spring Security Crypto（BCrypt 密码加密）
+- EasyExcel 3.3.2（Excel 导入解析）
+- TianAi Captcha 1.5.5（滑块验证码）
+
+**前端**
+
+- Vue 3.5 + TypeScript 5.6
+- Vite 5.4（构建工具）
+- Element Plus 2.13（UI 组件库）
+- Vue Router 4.6 + Pinia 3.0
+- GSAP 3.15（页面动画）
+- IBM Plex Mono（终端风格字体）
+
+**部署**
+
+- Docker + Docker Compose
+- Nginx（反向代理，`/score/` 路径）
+
+## 项目结构
+
+```
+Score/
+├── src/main/java/com/score/          # 后端源码
+│   ├── ScoreApplication.java         # Spring Boot 入口
+│   ├── common/                       # 统一响应体、全局异常处理
+│   ├── config/                       # Sa-Token、MyBatis-Plus、验证码配置
+│   ├── controller/                   # REST 接口（ScoreCheckController、CaptchaController）
+│   ├── entity/                       # 数据模型（Admin、Student、Score）
+│   ├── mapper/                       # MyBatis-Plus Mapper 接口
+│   ├── service/                      # 业务逻辑层
+│   └── Listener/                     # EasyExcel 导入监听器
+├── src/main/resources/               # 后端资源配置
+│   ├── application.yml               # 数据库、认证、验证码等配置
+│   ├── bgimages/                     # 验证码背景图
+│   └── banner.txt                    # 启动横幅
+├── score-frontend/                   # 前端子项目
+│   ├── src/
+│   │   ├── api/                      # API 请求模块
+│   │   ├── components/               # 公共组件（滑块验证码）
+│   │   ├── layouts/                  # 布局组件（教师工作台）
+│   │   ├── views/                    # 页面视图
+│   │   ├── stores/                   # Pinia 状态管理
+│   │   ├── router/                   # 路由配置
+│   │   └── utils/                    # 请求拦截器等工具
+│   └── vite.config.ts                # Vite 构建配置
+├── Dockerfile                        # 后端容器镜像
+├── docker-compose.yml                # 一键编排 MySQL + 后端
+└── pom.xml                           # Maven 依赖管理
+```
+
+## 数据库表
+
+| 表名 | 说明 | 关键字段 |
+|------|------|----------|
+| `admin` | 教师/管理员账号 | username, password (BCrypt), className, delFlag |
+| `student` | 学生信息 | studentName, className, idCard (唯一标识), delFlag |
+| `score` | 成绩记录 | studentName, className, idCard, examName, subject, score, delFlag |
+
+所有表均含 `del_flag` 软删除标记（`0`=正常，`1`=已删除）。
+
+## API 接口
+
+所有接口位于 `/scoreCheck` 路径下，前端通过 `/score/api` 代理转发。
+
+| 方法 | 路径 | 说明 | 鉴权 |
+|------|------|------|------|
+| POST | `/scoreCheck/StudentCheck` | 学生查询成绩 | 无 |
+| POST | `/scoreCheck/login` | 教师登录（含验证码） | 无 |
+| POST | `/scoreCheck/logout` | 退出登录 | ✅ |
+| POST | `/scoreCheck/checkList` | 教师查询成绩列表 | ✅ |
+| POST | `/scoreCheck/importStudent` | 批量导入学生（Excel） | ✅ |
+| POST | `/scoreCheck/importScore` | 批量导入成绩（Excel） | ✅ |
+| POST | `/scoreCheck/creatAdmin` | 创建教师账号 | ✅ |
+| GET | `/scoreCheck/getUserList` | 分页获取教师列表 | ✅ |
+| POST | `/scoreCheck/updateUser` | 更新教师信息 | ✅ |
+| DELETE | `/scoreCheck/{userName}` | 删除教师账号（软删） | ✅ |
+| POST | `/scoreCheck/getStudent` | 分页获取学生列表 | ✅ |
+| POST | `/captcha/genCaptcha` | 生成验证码 | 无 |
+| POST | `/captcha/check` | 校验验证码 | 无 |
+
+## 快速开始
+
+### 前置条件
+
+- JDK 17+
+- Maven 3.6+
+- Node.js 18+ / npm
+- MySQL 8.0
+- Docker & Docker Compose（可选，用于一键部署）
+
+### 本地开发
+
+**1. 初始化数据库**
+
+```sql
+CREATE DATABASE score DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+**2. 配置后端**
+
+编辑 `src/main/resources/application.yml`，修改数据库连接信息：
+
+```yaml
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/score?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+    username: root
+    password: your_password
+```
+
+**3. 启动后端**
+
+```bash
+mvn spring-boot:run
+```
+
+后端默认运行在 `http://localhost:8080`。
+
+**4. 启动前端**
+
+```bash
+cd score-frontend
+npm install
+npm run dev
+```
+
+前端默认运行在 `http://localhost:5173/score/`，并通过 Vite 代理将 API 请求转发至后端。
+
+### Docker 一键部署
+
+```bash
+docker-compose up -d
+```
+
+这将启动 MySQL 和后端应用。环境变量可通过 `.env` 文件或 `docker-compose.yml` 中的默认值覆盖。
+
+## 环境变量
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `DB_URL` | 数据库连接串 | `jdbc:mysql://localhost:3306/score?...` |
+| `DB_USER` | 数据库用户名 | `score` |
+| `DB_PWD` | 数据库密码 | `score123` |
+| `MYSQL_ROOT_PWD` | MySQL root 密码 | `root123` |
+
+## 设计特色
+
+- **终端美学 UI** — IBM Plex Mono 等宽字体 + 琥珀色点缀 + CRT 扫描线效果，工业风终端视觉
+- **滑块验证码** — 登录与注册环节集成 TianAi 滑块验证，保障平台安全
+- **多租户隔离** — 基于 MyBatis-Plus 租户插件，教师仅可查看和管理本班数据
+- **批量导入** — 支持 Excel 拖拽上传，学生与成绩数据分批次（50 条/批）入库
+- **暗色/亮色主题** — 完整的主题切换支持，适配不同使用场景
+
+## 构建与发布
+
+**后端打包：**
+
+```bash
+mvn clean package -DskipTests
+```
+
+生成的 JAR 位于 `target/Score-1.0.jar`。
+
+**前端构建：**
+
+```bash
+cd score-frontend
+npm run build
+```
+
+产物输出至 `score-frontend/dist/`，可部署至 Nginx，配合 `/score/` 基础路径使用。
+
+## License
+
+MIT
