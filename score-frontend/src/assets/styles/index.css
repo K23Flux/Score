@@ -1,0 +1,501 @@
+/* ============================================================
+   ScoreCheck — Global CSS Design System
+   Industrial Terminal Aesthetic | IBM Plex Mono | Amber Accent
+   ============================================================ */
+
+/* ---------- Dark Mode (Default) ---------- */
+:root {
+  /* === Background === */
+  --bg:           #0d1117;
+  --bg-deep:      #090c10;
+  --surface:      #161b22;
+  --surface-raised: #1c2128;
+  --border:       #21262d;
+  --border-strong: #30363d;
+
+  /* === Text === */
+  --text-primary:   #e6edf3;
+  --text-secondary: #8b949e;
+  --text-muted:     #484f58;
+  --text-inverse:   #0d1117;
+
+  /* === Amber Accent === */
+  --amber:       #f0a500;
+  --amber-dim:   #c48800;
+  --amber-glow:  rgba(240, 165, 0, 0.15);
+  --amber-bg:    rgba(240, 165, 0, 0.08);
+
+  /* === Semantic === */
+  --emerald:     #3fb950;
+  --emerald-bg:  rgba(63, 185, 80, 0.1);
+  --red:         #f85149;
+  --red-bg:      rgba(248, 81, 73, 0.1);
+  --blue:        #58a6ff;
+  --blue-bg:     rgba(88, 166, 255, 0.1);
+  --orange:      #d29922;
+  --orange-bg:   rgba(210, 153, 34, 0.1);
+
+  /* === Timing === */
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --fast: 150ms;
+  --normal: 250ms;
+  --slow: 400ms;
+
+  /* === Shadows === */
+  --shadow-sm:  0 1px 4px rgba(0, 0, 0, 0.3);
+  --shadow-md:  0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-lg:  0 8px 32px rgba(0, 0, 0, 0.5);
+  --shadow-amber: 0 4px 20px rgba(240, 165, 0, 0.2);
+}
+
+/* === Light Mode === */
+[data-theme="light"] {
+  --bg:           #f6f8fa;
+  --bg-deep:      #eef1f5;
+  --surface:      #ffffff;
+  --surface-raised: #fafbfc;
+  --border:       #d0d7de;
+  --border-strong: #afb8c1;
+  --text-primary:   #1f2328;
+  --text-secondary: #656d76;
+  --text-muted:     #8c959f;
+  --text-inverse:   #ffffff;
+  --amber:        #9a5d00;
+  --amber-dim:    #7a4a00;
+  --amber-glow:   rgba(154, 93, 0, 0.1);
+  --amber-bg:     rgba(154, 93, 0, 0.06);
+  --emerald:      #1a7f37;
+  --emerald-bg:   rgba(26, 127, 55, 0.08);
+  --red:          #cf222e;
+  --red-bg:       rgba(207, 34, 46, 0.08);
+  --blue:         #0969da;
+  --blue-bg:      rgba(9, 105, 218, 0.08);
+  --shadow-sm:  0 1px 4px rgba(0, 0, 0, 0.06);
+  --shadow-md:  0 4px 16px rgba(0, 0, 0, 0.08);
+  --shadow-lg:  0 8px 32px rgba(0, 0, 0, 0.1);
+  --shadow-amber: 0 4px 20px rgba(154, 93, 0, 0.15);
+}
+
+/* === Reset === */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'IBM Plex Mono', 'Courier New', monospace;
+  background-color: var(--bg);
+  color: var(--text-primary);
+  min-height: 100vh;
+  line-height: 1.6;
+  transition: background-color var(--normal) var(--ease-out), color var(--normal) var(--ease-out);
+  overflow-x: hidden;
+}
+
+#app { height: 100%; }
+
+/* === Keyframes === */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0; }
+}
+
+@keyframes breathe {
+  0%, 100% { opacity: 0.4; }
+  50%      { opacity: 1; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes typing {
+  from { width: 0; }
+  to   { width: 100%; }
+}
+
+@keyframes scanline {
+  0%   { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+
+.animate-fade-in { animation: fadeIn var(--normal) var(--ease-out) forwards; }
+.animate-fade-in-up { animation: fadeInUp var(--slow) var(--ease-out) forwards; }
+
+/* === Scrollbar === */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 0;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* === Selection === */
+::selection {
+  background: var(--amber);
+  color: var(--text-inverse);
+}
+
+/* ============================================================
+   Element Plus Overrides — ScoreCheck Theme
+   ============================================================ */
+
+/* --- Buttons --- */
+.el-button {
+  border-radius: 0 !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.02em !important;
+  transition: all var(--fast) var(--ease-out) !important;
+}
+
+/* Solid amber button */
+.el-button--primary {
+  --el-button-bg-color: var(--amber) !important;
+  --el-button-border-color: var(--amber) !important;
+  --el-button-text-color: var(--text-inverse) !important;
+  --el-button-hover-bg-color: var(--amber-dim) !important;
+  --el-button-hover-border-color: var(--amber-dim) !important;
+  --el-button-active-bg-color: var(--amber) !important;
+  --el-button-active-border-color: var(--amber) !important;
+  box-shadow: var(--shadow-amber) !important;
+}
+.el-button--primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px rgba(240, 165, 0, 0.25) !important;
+}
+.el-button--primary:active {
+  transform: translateY(0) scale(0.98) !important;
+}
+
+/* Outline button */
+.el-button--default {
+  --el-button-bg-color: transparent !important;
+  --el-button-border-color: var(--border-strong) !important;
+  --el-button-text-color: var(--text-secondary) !important;
+  --el-button-hover-border-color: var(--amber) !important;
+  --el-button-hover-text-color: var(--amber) !important;
+  --el-button-hover-bg-color: var(--amber-bg) !important;
+}
+
+/* Text button */
+.el-button--text {
+  font-family: 'IBM Plex Mono', monospace !important;
+  border-radius: 0 !important;
+}
+
+/* --- Inputs --- */
+.el-input__wrapper {
+  border-radius: 0 !important;
+  padding: 0 14px !important;
+  transition: all var(--fast) var(--ease-out) !important;
+  box-shadow: none !important;
+  border: 1px solid var(--border) !important;
+  background: var(--surface) !important;
+}
+.el-input__wrapper:hover {
+  border-color: var(--border-strong) !important;
+}
+.el-input__wrapper.is-focus {
+  border-color: var(--amber) !important;
+  box-shadow: 0 0 0 2px var(--amber-glow) !important;
+}
+.el-input__inner {
+  color: var(--text-primary) !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+  font-size: 14px !important;
+}
+.el-input__inner::placeholder {
+  color: var(--text-muted) !important;
+}
+
+/* --- Forms --- */
+.el-form-item__label {
+  font-family: 'IBM Plex Mono', monospace !important;
+  font-weight: 500 !important;
+  color: var(--text-secondary) !important;
+  font-size: 13px !important;
+}
+
+/* --- Tables --- */
+.el-table {
+  border-radius: 0 !important;
+  border: 1px solid var(--border) !important;
+  --el-table-bg-color: var(--bg) !important;
+  --el-table-tr-bg-color: var(--bg) !important;
+  --el-table-header-bg-color: var(--bg-deep) !important;
+  --el-table-header-text-color: var(--text-secondary) !important;
+  --el-table-row-hover-bg-color: var(--surface) !important;
+  --el-table-text-color: var(--text-primary) !important;
+  --el-table-border-color: var(--border) !important;
+  --el-table-border: 1px solid var(--border) !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+}
+.el-table th.el-table__cell {
+  font-weight: 600 !important;
+  font-size: 12px !important;
+  color: var(--text-secondary) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.el-table td.el-table__cell {
+  font-size: 13px !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+
+/* --- Dialogs / Modals --- */
+.el-dialog, .el-message-box {
+  border-radius: 0 !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: var(--shadow-lg) !important;
+  background: var(--surface) !important;
+}
+.el-dialog__header {
+  border-bottom: 1px solid var(--border) !important;
+  padding: 16px 20px !important;
+}
+.el-dialog__title {
+  font-family: 'IBM Plex Mono', monospace !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: var(--text-primary) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.el-dialog__body {
+  padding: 20px !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+  color: var(--text-secondary) !important;
+}
+.el-dialog__footer {
+  padding: 12px 20px 16px !important;
+  border-top: 1px solid var(--border) !important;
+}
+
+/* --- Tags / Badges --- */
+.el-tag {
+  border-radius: 0 !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  border: 1px solid !important;
+  padding: 2px 8px !important;
+}
+.el-tag--success {
+  background: var(--emerald-bg) !important;
+  color: var(--emerald) !important;
+  border-color: rgba(63, 185, 80, 0.3) !important;
+}
+.el-tag--danger {
+  background: var(--red-bg) !important;
+  color: var(--red) !important;
+  border-color: rgba(248, 81, 73, 0.3) !important;
+}
+.el-tag--warning {
+  background: var(--orange-bg) !important;
+  color: var(--orange) !important;
+  border-color: rgba(210, 153, 34, 0.3) !important;
+}
+.el-tag--info {
+  background: var(--amber-bg) !important;
+  color: var(--amber) !important;
+  border-color: rgba(240, 165, 0, 0.3) !important;
+}
+
+/* --- Pagination (Capsule style) --- */
+.el-pagination {
+  justify-content: flex-end !important;
+  padding: 12px 0 0 !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+}
+.el-pagination.is-background .el-pager li {
+  border-radius: 50px !important;
+  border: 1px solid var(--border) !important;
+  background: var(--surface) !important;
+  color: var(--text-secondary) !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  min-width: 32px !important;
+  height: 32px !important;
+  transition: all var(--fast) var(--ease-out) !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+}
+.el-pagination.is-background .el-pager li.is-active {
+  background: var(--amber) !important;
+  border-color: var(--amber) !important;
+  color: var(--text-inverse) !important;
+}
+.el-pagination.is-background .el-pager li:hover {
+  border-color: var(--amber) !important;
+  color: var(--amber) !important;
+}
+.el-pagination .btn-prev,
+.el-pagination .btn-next {
+  border-radius: 50% !important;
+  border: 1px solid var(--border) !important;
+  background: var(--surface) !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+}
+
+/* --- Cards --- */
+.el-card {
+  border-radius: 0 !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: none !important;
+  --el-card-bg-color: var(--surface) !important;
+}
+.el-card__header {
+  border-bottom: 1px solid var(--border) !important;
+  padding: 12px 16px !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+  font-weight: 600 !important;
+  font-size: 12px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary) !important;
+  background: var(--bg-deep) !important;
+}
+
+/* --- Tabs --- */
+.el-tabs__item {
+  font-family: 'IBM Plex Mono', monospace !important;
+  font-weight: 500 !important;
+  font-size: 13px !important;
+  color: var(--text-secondary) !important;
+  transition: all var(--fast) var(--ease-out) !important;
+}
+.el-tabs__item.is-active {
+  color: var(--amber) !important;
+  font-weight: 600 !important;
+}
+.el-tabs__active-bar {
+  background: var(--amber) !important;
+  height: 2px !important;
+}
+
+/* --- Messages / Toasts --- */
+.el-message {
+  border-radius: 0 !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: var(--shadow-md) !important;
+  padding: 12px 16px !important;
+  background: var(--surface) !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+  font-size: 13px !important;
+}
+.el-message__content {
+  color: var(--text-primary) !important;
+}
+
+/* --- Loading --- */
+.el-loading-mask {
+  background-color: rgba(13, 17, 23, 0.85) !important;
+}
+[data-theme="light"] .el-loading-mask {
+  background-color: rgba(246, 248, 250, 0.85) !important;
+}
+.el-loading-spinner .path {
+  stroke: var(--amber) !important;
+}
+
+/* --- Upload --- */
+.el-upload-dragger {
+  border-radius: 0 !important;
+  border: 1px dashed var(--border-strong) !important;
+  background: var(--surface) !important;
+  padding: 40px !important;
+  transition: all var(--normal) var(--ease-out) !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+}
+.el-upload-dragger:hover {
+  border-color: var(--amber) !important;
+  background: var(--amber-bg) !important;
+}
+
+/* --- Dropdown --- */
+.el-dropdown-menu {
+  border-radius: 0 !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: var(--shadow-lg) !important;
+  padding: 4px !important;
+  background: var(--surface) !important;
+}
+.el-dropdown-menu__item {
+  font-family: 'IBM Plex Mono', monospace !important;
+  font-size: 13px !important;
+  color: var(--text-secondary) !important;
+  transition: all var(--fast) var(--ease-out) !important;
+}
+.el-dropdown-menu__item:hover {
+  background: var(--surface-raised) !important;
+  color: var(--text-primary) !important;
+}
+
+/* --- Tooltip --- */
+.el-tooltip__popper {
+  border-radius: 0 !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+  font-size: 12px !important;
+  padding: 4px 10px !important;
+  background: var(--surface-raised) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-secondary) !important;
+}
+
+/* --- Progress --- */
+.el-progress-bar__outer {
+  border-radius: 0 !important;
+  background: var(--bg-deep) !important;
+  border: 1px solid var(--border) !important;
+}
+.el-progress-bar__inner {
+  border-radius: 0 !important;
+  background: var(--amber) !important;
+}
+
+/* ============================================================
+   Utility Classes
+   ============================================================ */
+.text-amber { color: var(--amber) !important; }
+.text-emerald { color: var(--emerald) !important; }
+.text-red { color: var(--red) !important; }
+.text-blue { color: var(--blue) !important; }
+.text-muted { color: var(--text-muted) !important; }
+.bg-surface { background: var(--surface) !important; }
+.bg-deep { background: var(--bg-deep) !important; }
+.border-amber { border-color: var(--amber) !important; }
+.border-strong { border-color: var(--border-strong) !important; }
+
+/* === Scanline overlay (subtle CRT effect) === */
+.scanline-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.015) 2px,
+    rgba(0, 0, 0, 0.015) 4px
+  );
+  opacity: 0.3;
+}
+
+@media (max-width: 768px) {
+  .scanline-overlay { display: none; }
+}
