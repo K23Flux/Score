@@ -24,6 +24,13 @@ public class GlobalExceptionHandler {
         return ResultVo.error(msg);
     }
 
+    //导入校验等可预期的业务错误，直接返回给页面
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResultVo<?> handleIllegalArgumentException(IllegalArgumentException e) {
+        log.warn("请求参数或数据校验失败：{}", e.getMessage());
+        return ResultVo.error(e.getMessage());
+    }
+
     @ExceptionHandler(Exception.class)
     public ResultVo<?> handleException(Exception e) {
         log.error("系统异常",e);

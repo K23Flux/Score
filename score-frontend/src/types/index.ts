@@ -72,7 +72,15 @@ export interface AdminUser {
 export interface LoginParams {
   userName: string
   password: string
-  captchaId: string
+  captchaId?: string
+}
+
+/**
+ * 登录策略：是否需要滑块验证、是否已被限速
+ */
+export interface LoginPolicy {
+  captchaRequired: boolean
+  rateLimited: boolean
 }
 
 /**
@@ -116,4 +124,70 @@ export interface StudentListParams {
   className?: string
   pageNum?: number
   pageSize?: number
+}
+
+/**
+ * 导入文件中的一列
+ */
+export interface ImportColumn {
+  index: number
+  header: string
+  sample: string
+}
+
+/**
+ * 列映射（列索引）
+ */
+export interface ImportMapping {
+  nameColumn: number | null
+  idColumn: number | null
+  subjectColumns: number[]
+  ignoredColumns: number[]
+}
+
+/**
+ * 导入预览行
+ */
+export interface ImportPreviewRow {
+  rowNumber: number
+  studentName: string
+  idCard: string
+  className: string
+  subjects: Record<string, string>
+  valid: boolean
+  message?: string
+}
+
+/**
+ * 导入校验错误
+ */
+export interface ImportRowError {
+  rowNumber: number
+  message: string
+}
+
+/**
+ * 导入预览结果
+ */
+export interface ImportPreview {
+  columns: ImportColumn[]
+  mapping: ImportMapping
+  mappingSource: string
+  aiEnabled: boolean
+  rows: ImportPreviewRow[]
+  errors: ImportRowError[]
+  headerErrors: string[]
+  totalRows: number
+  validRows: number
+  invalidRows: number
+}
+
+/**
+ * 导入提交结果
+ */
+export interface ImportResult {
+  inserted: number
+  updated: number
+  skipped: number
+  message: string
 }

@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { PhLock, PhUser } from '@phosphor-icons/vue'
-import { login } from '@/api/auth'
+import { getLoginPolicy, login } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
 import SliderCaptcha from '@/components/SliderCaptcha.vue'
 
@@ -30,9 +30,21 @@ const handleLogin = async () => {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
 
+  // 只有连续失败后才要求滑块验证；首次登录直接提交
   if (!captchaToken.value) {
-    showCaptcha.value = true
-    return
+    try {
+      const policy = await getLoginPolicy(formData.userName.trim())
+      if (policy.data?.rateLimited) {
+        ElMessage.error('尝试过于频繁，请稍后再试')
+        return
+      }
+      if (policy.data?.captchaRequired) {
+        showCaptcha.value = true
+        return
+      }
+    } catch {
+      // 策略查询失败时继续登录，后端仍会校验
+    }
   }
 
   loading.value = true
@@ -40,7 +52,7 @@ const handleLogin = async () => {
     const res = await login({
       userName: formData.userName.trim(),
       password: formData.password,
-      captchaId: captchaToken.value,
+      captchaId: captchaToken.value || undefined,
     })
     const token = res.data?.token
     if (token) {
@@ -49,8 +61,12 @@ const handleLogin = async () => {
       ElMessage.success('登录成功')
       router.push('/teacher/dashboard')
     }
-  } catch {
+  } catch (error) {
     captchaToken.value = ''
+    const message = error instanceof Error ? error.message : ''
+    if (message.includes('安全验证')) {
+      showCaptcha.value = true
+    }
   } finally {
     loading.value = false
   }

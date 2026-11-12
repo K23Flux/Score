@@ -2,33 +2,33 @@ package com.score.service.impl;
 
 import cloud.tianai.captcha.application.ImageCaptchaApplication;
 import cn.dev33.satoken.stp.StpUtil;
-import com.alibaba.excel.EasyExcel;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.score.Listener.StudentImportListener;
+import com.score.common.ClientIpResolver;
 import com.score.common.ResultVo;
 import com.score.entity.Admin;
 import com.score.entity.Score;
 import com.score.entity.Student;
 import com.score.entity.bo.AdminBo;
 import com.score.entity.bo.StudentQueryScoreBo;
-import com.score.entity.vo.StudentImportExcelVo;
+import com.score.entity.vo.ImportResultVo;
 import com.score.mapper.AdminMapper;
 import com.score.mapper.ScoreMapper;
 import com.score.mapper.StudentMapper;
+import com.score.service.ExcelImportService;
 import com.score.service.IScoreService;
-import jakarta.servlet.http.HttpSession;
+import com.score.service.ImportType;
+import com.score.service.LoginGuardService;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.bcrypt.BCrypt;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.*;
 
@@ -49,6 +49,10 @@ public class ScoreServiceImpl implements IScoreService {
     private StudentMapper studentMapper;
     @Autowired
     private ImageCaptchaApplication imageCaptchaApplication;
+    @Autowired
+    private ExcelImportService excelImportService;
+    @Autowired
+    private LoginGuardService loginGuardService;
 
     @Override
     public ResultVo<?> queryScore(StudentQueryScoreBo bo) {
@@ -107,31 +111,36 @@ public class ScoreServiceImpl implements IScoreService {
         if(attributes==null){
             return ResultVo.error("系统繁忙，请稍后再试");
         }
-        HttpSession session = attributes.getRequest().getSession();
-        String captchaId =bo.getCaptchaId();
-        if(captchaId==null||captchaId.isEmpty()){
-            return ResultVo.error("安全验证标识不能为空：请刷新页面");
+        HttpServletRequest request = attributes.getRequest();
+        String clientIp = ClientIpResolver.resolve(request);
+        if (loginGuardService.isRateLimited(clientIp)) {
+            return ResultVo.error("尝试过于频繁，请稍后再试");
         }
-        Boolean verified = (Boolean) session.getAttribute("captcha_verified_"+captchaId);
-        if(verified==null||!verified){
-            return ResultVo.error("安全验证未通过，请重试");
-        }
-        session.removeAttribute("captcha_verified_"+captchaId);
-        log.info("验证成功");
+        loginGuardService.recordAttempt(clientIp);
 
+        // 连续失败后才要求滑块验证，首次登录不打扰用户
+        if (loginGuardService.isCaptchaRequired(bo.getUserName(), clientIp)) {
+            String captchaId = bo.getCaptchaId();
+            if (!StringUtils.hasText(captchaId)) {
+                return ResultVo.error("需要安全验证，请完成滑块验证");
+            }
+            Boolean verified = (Boolean) request.getSession().getAttribute("captcha_verified_" + captchaId);
+            if (verified == null || !verified) {
+                return ResultVo.error("需要安全验证，请完成滑块验证");
+            }
+            request.getSession().removeAttribute("captcha_verified_" + captchaId);
+            log.info("验证码校验成功");
+        }
 
         LambdaQueryWrapper<Admin> lqw = new LambdaQueryWrapper<>();
         lqw.eq(Admin::getUserName, bo.getUserName()).eq(Admin::getDelFlag, "0");
         Admin admin = adminMapper.selectOne(lqw);
 
-        if (admin == null) {
+        if (admin == null || !BCrypt.checkpw(bo.getPassword(), admin.getPassword())) {
+            loginGuardService.recordFailure(bo.getUserName(), clientIp);
             return ResultVo.error("登录失败：用户名或密码错误");
         }
-
-        // 3. 校验密码（支持 BCrypt）
-        if (!BCrypt.checkpw(bo.getPassword(), admin.getPassword())) {
-            return ResultVo.error("登录失败：用户名或密码错误");
-        }
+        loginGuardService.recordSuccess(bo.getUserName(), clientIp);
 
         // 4. 登录成功
         StpUtil.login(admin.getUserName());
@@ -143,118 +152,18 @@ public class ScoreServiceImpl implements IScoreService {
         return ResultVo.success(result);
     }
 
-    @Transactional(rollbackFor = Exception.class)
     @Override
     public ResultVo<?> importStudent(MultipartFile file, String className) {
-        // 校验文件类型：浏览器对 .xlsx 上报的 MIME 是
-        // application/vnd.openxmlformats-officedocument.spreadsheetml.sheet，并不包含 "excel"，
-        // 因此以扩展名为准，MIME 仅作辅助判断。
-        if (!isExcelFile(file)) {
-            return ResultVo.error("请上传Excel文件（.xlsx/.xls）");
-        }
-
-        // 先将文件读入字节数组
-        byte[] fileBytes;
-        try {
-            fileBytes = file.getBytes();
-        } catch (IOException e) {
-            throw new RuntimeException("读取文件失败", e);
-        }
-
-        // 校验文件大小（最大 10MB）
-        if (fileBytes.length > 10 * 1024 * 1024) {
-            return ResultVo.error("文件大小不能超过10MB");
-        }
-
-        // 读取Excel
-        try {
-            EasyExcel.read(new java.io.ByteArrayInputStream(fileBytes), StudentImportExcelVo.class,
-                    new StudentImportListener(studentMapper, className))
-                    .sheet()
-                    .doRead();
-        } catch (Exception e) {
-            log.error("学生导入异常", e);
-            throw new RuntimeException("解析Excel失败：" + e.getMessage());
-        }
-
-        return ResultVo.success("学生信息导入成功");
+        ImportResultVo result = excelImportService.commit(
+                file, ImportType.STUDENT, className, null, null, false);
+        return ResultVo.success(result.getMessage());
     }
 
-    @Transactional(rollbackFor = Exception.class)
     @Override
     public ResultVo<?> importScores(MultipartFile file, String examName, String className) {
-        if (!isExcelFile(file)) {
-            return ResultVo.error("请上传Excel文件（.xlsx/.xls）");
-        }
-        if (file.getSize() > 10 * 1024 * 1024) {
-            return ResultVo.error("文件大小不能超过10MB");
-        }
-
-        // 先将文件读入字节数组，避免多次调用 getInputStream()（流只能读一次）
-        byte[] fileBytes;
-        try {
-            fileBytes = file.getBytes();
-        } catch (IOException e) {
-            throw new RuntimeException("读取文件失败", e);
-        }
-
-        // 读取表头（第一行）
-        List<Map<Integer, String>> headList = EasyExcel.read(new java.io.ByteArrayInputStream(fileBytes))
-                .sheet().headRowNumber(0).doReadSync();
-        if (headList.isEmpty()) return ResultVo.error("Excel文件为空");
-
-        // 根据表头列名建立 列名->列索引 的映射
-        Map<String, Integer> headMap = new HashMap<>();
-        for (Map.Entry<Integer, String> entry : headList.get(0).entrySet()) {
-            headMap.put(entry.getValue(), entry.getKey());
-        }
-
-        // 校验必要列
-        if (!headMap.containsKey("姓名")) {
-            return ResultVo.error("Excel表头缺少'姓名'列");
-        }
-        Integer nameColIndex = headMap.get("姓名");
-
-        // 读取数据部分
-        List<Map<Integer, String>> dataList = EasyExcel.read(new java.io.ByteArrayInputStream(fileBytes))
-                .sheet().headRowNumber(1).doReadSync();
-
-        int successCount = 0;
-        for (Map<Integer, String> data : dataList) {
-            String studentName = data.get(nameColIndex);
-            if (!StringUtils.hasText(studentName)) continue;
-
-            // 查询学生身份证号
-            LambdaQueryWrapper<Student> queryWrapper = new LambdaQueryWrapper<>();
-            queryWrapper.eq(Student::getStudentName, studentName).eq(Student::getClassName, className).eq(Student::getDelFlag, "0");
-            Student student = studentMapper.selectOne(queryWrapper);
-            if (student == null) {
-                log.warn("学生：{} 不在班级：{} 档案中，跳过", studentName, className);
-                continue;
-            }
-
-            // 遍历表头中的所有科目列（跳过"姓名"列）
-            for (Map.Entry<String, Integer> entry : headMap.entrySet()) {
-                if ("姓名".equals(entry.getKey())) continue;
-                String subject = entry.getKey();
-                String scoreStr = data.get(entry.getValue());
-                if (StringUtils.hasText(subject) && StringUtils.hasText(scoreStr)) {
-                    Score score = new Score();
-                    score.setStudentName(studentName);
-                    score.setIdCard(student.getIdCard());
-                    score.setClassName(className);
-                    score.setSubject(subject);
-                    score.setScore(new BigDecimal(scoreStr));
-                    score.setExamName(examName);
-                    score.setDelFlag("0");
-                    score.setCreateTime(new Date());
-
-                    scoreMapper.insert(score);
-                    successCount++;
-                }
-            }
-        }
-        return ResultVo.success("成功导入：" + successCount + "条成绩记录");
+        ImportResultVo result = excelImportService.commit(
+                file, ImportType.SCORE, className, examName, null, false);
+        return ResultVo.success(result.getMessage());
     }
 
     @Override
@@ -346,26 +255,5 @@ public class ScoreServiceImpl implements IScoreService {
            .eq(StringUtils.hasText(adminBo.getClassName()), Student::getClassName, adminBo.getClassName())
            .orderByDesc(Student::getCreateTime);
         return ResultVo.success(studentMapper.selectPage(page, lqw));
-    }
-
-    /**
-     * 判断上传文件是否为 Excel。
-     * 浏览器对 .xlsx 的 MIME 是 application/vnd.openxmlformats-officedocument.spreadsheetml.sheet，
-     * 不含 "excel"，所以以扩展名为准，MIME 仅作兜底。
-     */
-    private boolean isExcelFile(MultipartFile file) {
-        if (file == null || file.isEmpty()) {
-            return false;
-        }
-        String fileName = file.getOriginalFilename();
-        if (fileName != null) {
-            String lower = fileName.toLowerCase(java.util.Locale.ROOT);
-            if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) {
-                return true;
-            }
-        }
-        String contentType = file.getContentType();
-        return contentType != null
-                && (contentType.contains("excel") || contentType.contains("spreadsheetml"));
     }
 }

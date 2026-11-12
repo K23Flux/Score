@@ -1,10 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { PhFileCsv, PhUploadSimple } from '@phosphor-icons/vue'
-import { importScore, importStudent } from '@/api/import'
+import {
+  commitScoreImport,
+  commitStudentImport,
+  previewScoreImport,
+  previewStudentImport,
+} from '@/api/import'
 import { useAuthStore } from '@/stores/auth'
+import type { ImportMapping, ImportPreview } from '@/types'
 
 type ImportTab = 'student' | 'score'
 
@@ -16,10 +22,22 @@ const scoreFormRef = ref<FormInstance>()
 const fileInput = ref<HTMLInputElement | null>(null)
 const selectedFile = ref<File | null>(null)
 const fileError = ref('')
+const previewing = ref(false)
 const importing = ref(false)
 const dragActive = ref(false)
+const preview = ref<ImportPreview | null>(null)
 const resultMessage = ref('')
 const resultType = ref<'success' | 'warning' | 'error' | ''>('')
+
+const mapping = reactive<ImportMapping>({
+  nameColumn: null,
+  idColumn: null,
+  subjectColumns: [],
+  ignoredColumns: [],
+})
+
+let previewSeq = 0
+let previewTimer: ReturnType<typeof setTimeout> | null = null
 
 const studentForm = reactive({ className: authStore.className || '' })
 const scoreForm = reactive({ examName: '', className: authStore.className || '' })
@@ -34,25 +52,33 @@ const scoreRules: FormRules = {
 }
 
 const activeHint = computed(() => activeTab.value === 'student'
-  ? '学生表表头：姓名、身份证；班级以上方填写为准。'
-  : '成绩表第一列：姓名，其余列为科目。请先导入学生，再导入成绩。')
+  ? '表头会自动识别“姓名”“身份证”等常见写法；解析后可手动调整列映射。班级以上方填写为准。'
+  : '表头会自动识别姓名和科目列；解析后可手动调整。缺考请留空，不要填“缺考”。')
 
-const fileSizeText = computed(() => {
-  if (!selectedFile.value) return ''
-  const bytes = selectedFile.value.size
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+const mappingSourceText = computed(() => {
+  if (!preview.value) return ''
+  if (preview.value.mappingSource === 'ai') return 'AI 建议的列映射，请确认'
+  if (preview.value.mappingSource === 'manual') return '手动调整的列映射'
+  return '按表头规则识别的列映射'
 })
 
-const switchTab = (tab: ImportTab) => {
-  if (importing.value || activeTab.value === tab) return
-  activeTab.value = tab
-  selectedFile.value = null
-  fileError.value = ''
-  resultMessage.value = ''
-  resultType.value = ''
-}
+const subjectOptions = computed(() => {
+  if (!preview.value) return []
+  return preview.value.columns.filter(
+    (column) => column.index !== mapping.nameColumn && column.index !== mapping.idColumn,
+  )
+})
+
+const canCommit = computed(() => {
+  if (!preview.value || preview.value.headerErrors.length > 0) return false
+  if (mapping.nameColumn === null || preview.value.validRows === 0) return false
+  if (activeTab.value === 'student') return mapping.idColumn !== null
+  return mapping.subjectColumns.length > 0
+})
+
+const visibleErrors = computed(() => preview.value?.errors.slice(0, 20) || [])
+
+const activeClassName = () => (activeTab.value === 'student' ? studentForm.className : scoreForm.className)
 
 const validateFile = (file: File) => {
   const name = file.name.toLowerCase()
@@ -60,6 +86,28 @@ const validateFile = (file: File) => {
   if (file.size === 0) return '文件为空，请重新选择'
   if (file.size > 10 * 1024 * 1024) return '文件大小不能超过 10MB'
   return ''
+}
+
+const resetPreview = () => {
+  preview.value = null
+  selectedFile.value = null
+  fileError.value = ''
+  mapping.nameColumn = null
+  mapping.idColumn = null
+  mapping.subjectColumns = []
+  mapping.ignoredColumns = []
+}
+
+const resetAll = () => {
+  resetPreview()
+  resultMessage.value = ''
+  resultType.value = ''
+}
+
+const switchTab = (tab: ImportTab) => {
+  if (importing.value || previewing.value || activeTab.value === tab) return
+  activeTab.value = tab
+  resetAll()
 }
 
 const acceptFile = (file: File) => {
@@ -71,6 +119,7 @@ const acceptFile = (file: File) => {
   }
   selectedFile.value = file
   fileError.value = ''
+  preview.value = null
   resultMessage.value = ''
   resultType.value = ''
 }
@@ -89,7 +138,7 @@ const handleFileChange = (event: Event) => {
 
 const handleDrop = (event: DragEvent) => {
   dragActive.value = false
-  if (importing.value) return
+  if (importing.value || previewing.value) return
   const files = Array.from(event.dataTransfer?.files || [])
   if (files.length > 1) {
     selectedFile.value = null
@@ -100,67 +149,124 @@ const handleDrop = (event: DragEvent) => {
 }
 
 const triggerFilePicker = () => {
-  if (importing.value) return
+  if (importing.value || previewing.value) return
   fileInput.value?.click()
 }
 
 const removeFile = () => {
-  if (importing.value) return
-  selectedFile.value = null
-  fileError.value = ''
+  if (importing.value || previewing.value) return
+  resetPreview()
   resultMessage.value = ''
   resultType.value = ''
 }
 
-const handleImport = async () => {
-  if (importing.value) return
-
-  const formRef = activeTab.value === 'student' ? studentFormRef.value : scoreFormRef.value
+const validateActiveForm = async () => {
   const form = activeTab.value === 'student' ? studentForm : scoreForm
-
   form.className = form.className.trim()
   if (activeTab.value === 'score') scoreForm.examName = scoreForm.examName.trim()
-
+  const formRef = activeTab.value === 'student' ? studentFormRef.value : scoreFormRef.value
   formRef?.clearValidate()
-  const valid = await formRef?.validate().catch(() => false)
-  if (!valid) return
+  return (await formRef?.validate().catch(() => false)) === true
+}
 
+const mappingPayload = (): ImportMapping => ({
+  nameColumn: mapping.nameColumn,
+  idColumn: mapping.idColumn === mapping.nameColumn ? null : mapping.idColumn,
+  subjectColumns: mapping.subjectColumns.filter(
+    (index) => index !== mapping.nameColumn && index !== mapping.idColumn,
+  ),
+  ignoredColumns: [],
+})
+
+const fetchPreview = async (withMapping: boolean) => {
+  const file = selectedFile.value
+  if (!file) return
+  const seq = ++previewSeq
+  previewing.value = true
+  fileError.value = ''
+  try {
+    const className = activeClassName()
+    const res = activeTab.value === 'student'
+      ? await previewStudentImport(file, className, withMapping ? mappingPayload() : undefined)
+      : await previewScoreImport(file, scoreForm.examName, className, withMapping ? mappingPayload() : undefined)
+    if (seq !== previewSeq) return
+    preview.value = res.data
+    Object.assign(mapping, res.data.mapping)
+    resultMessage.value = ''
+    resultType.value = ''
+  } catch (error) {
+    if (seq !== previewSeq) return
+    preview.value = null
+    fileError.value = error instanceof Error ? error.message : '解析失败，请检查文件'
+  } finally {
+    if (seq === previewSeq) previewing.value = false
+  }
+}
+
+const parsePreview = async () => {
+  if (previewing.value || importing.value) return
   if (!selectedFile.value) {
     fileError.value = '请选择 Excel 文件'
     return
   }
+  if (!(await validateActiveForm())) return
+  await fetchPreview(false)
+}
 
-  const error = validateFile(selectedFile.value)
-  if (error) {
-    fileError.value = error
-    return
+const refreshPreview = () => {
+  if (!preview.value || previewing.value || importing.value) return
+  if (previewTimer) clearTimeout(previewTimer)
+  previewTimer = setTimeout(() => {
+    void fetchPreview(true)
+  }, 300)
+}
+
+const confirmImport = async () => {
+  if (importing.value || previewing.value || !preview.value || !selectedFile.value) return
+  if (!canCommit.value) return
+
+  const invalid = preview.value.invalidRows
+  let ignoreErrors = false
+  if (invalid > 0) {
+    try {
+      await ElMessageBox.confirm(
+        `有 ${invalid} 行存在问题，将只导入有效行。是否继续？`,
+        '存在问题的数据',
+        {
+          confirmButtonText: '只导入有效行',
+          cancelButtonText: '返回检查',
+          type: 'warning',
+        },
+      )
+      ignoreErrors = true
+    } catch {
+      return
+    }
   }
 
   importing.value = true
-  resultMessage.value = ''
-  resultType.value = ''
-
   try {
     const file = selectedFile.value
+    const className = activeClassName()
     const res = activeTab.value === 'student'
-      ? await importStudent(file, studentForm.className)
-      : await importScore(file, scoreForm.examName, scoreForm.className)
-
-    const message = typeof res.data === 'string' && res.data
-      ? res.data
-      : (activeTab.value === 'student' ? '学生信息导入成功' : '成绩导入成功')
-
+      ? await commitStudentImport(file, className, mappingPayload(), ignoreErrors)
+      : await commitScoreImport(file, scoreForm.examName, className, mappingPayload(), ignoreErrors)
+    const message = res.data?.message || '导入完成'
+    resetPreview()
     resultMessage.value = message
-    resultType.value = /(^|\D)0\s*条/.test(message) ? 'warning' : 'success'
-    selectedFile.value = null
-    if (resultType.value === 'warning') ElMessage.warning('导入完成，请检查结果')
-    else ElMessage.success('导入完成')
-  } catch {
-    resultMessage.value = '导入失败，请检查文件内容后重试。'
+    resultType.value = 'success'
+    ElMessage.success('导入完成')
+  } catch (error) {
+    resultMessage.value = error instanceof Error ? error.message : '导入失败，请检查文件后重试。'
     resultType.value = 'error'
   } finally {
     importing.value = false
   }
+}
+
+const formatSubjects = (subjects: Record<string, string>) => {
+  const entries = Object.entries(subjects || {})
+  return entries.length ? entries.map(([subject, value]) => `${subject} ${value}`).join('；') : '—'
 }
 
 onMounted(() => {
@@ -184,7 +290,7 @@ onMounted(() => {
           type="button"
           role="tab"
           :aria-selected="activeTab === 'student'"
-          :disabled="importing"
+          :disabled="importing || previewing"
           @click="switchTab('student')"
         >
           学生信息
@@ -194,7 +300,7 @@ onMounted(() => {
           type="button"
           role="tab"
           :aria-selected="activeTab === 'score'"
-          :disabled="importing"
+          :disabled="importing || previewing"
           @click="switchTab('score')"
         >
           考试成绩
@@ -213,7 +319,7 @@ onMounted(() => {
           <el-form-item label="班级" prop="className">
             <el-input
               v-model="studentForm.className"
-              :disabled="importing"
+              :disabled="importing || previewing || !!preview"
               placeholder="如：高一(2)班"
             />
           </el-form-item>
@@ -231,61 +337,190 @@ onMounted(() => {
             <el-form-item label="考试名称" prop="examName">
               <el-input
                 v-model="scoreForm.examName"
-                :disabled="importing"
+                :disabled="importing || previewing || !!preview"
                 placeholder="如：期中考试"
               />
             </el-form-item>
             <el-form-item label="班级" prop="className">
               <el-input
                 v-model="scoreForm.className"
-                :disabled="importing"
+                :disabled="importing || previewing || !!preview"
                 placeholder="如：高一(2)班"
               />
             </el-form-item>
           </div>
         </el-form>
 
-        <div
-          class="dropzone"
-          :class="{ 'is-drag': dragActive, 'is-disabled': importing }"
-          role="button"
-          tabindex="0"
-          aria-label="选择或拖入 Excel 文件"
-          @click="triggerFilePicker"
-          @keydown.enter.prevent="triggerFilePicker"
-          @keydown.space.prevent="triggerFilePicker"
-          @dragenter.prevent="dragActive = !importing"
-          @dragover.prevent="dragActive = !importing"
-          @dragleave.prevent="dragActive = false"
-          @drop.prevent="handleDrop"
-        >
-          <PhUploadSimple size="26" weight="duotone" class="drop-icon" />
-          <p><strong>选择文件</strong> 或拖到这里</p>
-          <p class="hint">支持 .xlsx / .xls，单个文件不超过 10MB</p>
-        </div>
-        <input ref="fileInput" type="file" accept=".xlsx,.xls" hidden @change="handleFileChange" />
+        <template v-if="!preview">
+          <div
+            class="dropzone"
+            :class="{ 'is-drag': dragActive, 'is-disabled': importing || previewing }"
+            role="button"
+            tabindex="0"
+            aria-label="选择或拖入 Excel 文件"
+            @click="triggerFilePicker"
+            @keydown.enter.prevent="triggerFilePicker"
+            @keydown.space.prevent="triggerFilePicker"
+            @dragenter.prevent="dragActive = !importing && !previewing"
+            @dragover.prevent="dragActive = !importing && !previewing"
+            @dragleave.prevent="dragActive = false"
+            @drop.prevent="handleDrop"
+          >
+            <PhUploadSimple size="26" weight="duotone" class="drop-icon" />
+            <p><strong>选择文件</strong> 或拖到这里</p>
+            <p class="hint">支持 .xlsx / .xls，单个文件不超过 10MB</p>
+          </div>
+          <input ref="fileInput" type="file" accept=".xlsx,.xls" hidden @change="handleFileChange" />
 
-        <div v-if="selectedFile" class="file-row">
-          <PhFileCsv size="18" weight="duotone" class="file-icon" />
-          <span class="file-name" :title="selectedFile.name">{{ selectedFile.name }}</span>
-          <span class="file-size">{{ fileSizeText }}</span>
-          <button class="file-remove" type="button" :disabled="importing" @click="removeFile">移除</button>
-        </div>
+          <div v-if="selectedFile" class="file-row">
+            <PhFileCsv size="18" weight="duotone" class="file-icon" />
+            <span class="file-name" :title="selectedFile.name">{{ selectedFile.name }}</span>
+            <span class="file-size">{{ (selectedFile.size / 1024).toFixed(1) }} KB</span>
+            <button class="file-remove" type="button" :disabled="previewing" @click="removeFile">移除</button>
+          </div>
 
-        <p v-if="fileError" class="file-error">{{ fileError }}</p>
+          <p v-if="fileError" class="file-error">{{ fileError }}</p>
 
-        <div class="form-actions">
-          <el-button type="primary" :loading="importing" :disabled="importing" @click="handleImport">
-            导入
-          </el-button>
-          <span class="form-note">导入过程中请勿重复提交</span>
-        </div>
+          <div class="form-actions">
+            <el-button
+              type="primary"
+              :loading="previewing"
+              :disabled="previewing || !selectedFile"
+              @click="parsePreview"
+            >
+              解析预览
+            </el-button>
+            <span class="form-note">解析后会显示列映射和逐行校验结果</span>
+          </div>
+
+          <p class="form-hint">{{ activeHint }}</p>
+        </template>
+
+        <template v-else>
+          <div class="preview-head">
+            <div>
+              <h2>确认列映射</h2>
+              <p>
+                {{ mappingSourceText }}；共 {{ preview.totalRows }} 行，
+                有效 {{ preview.validRows }}，问题 {{ preview.invalidRows }}
+              </p>
+            </div>
+            <el-button link :disabled="importing" @click="removeFile">重新选择文件</el-button>
+          </div>
+
+          <div class="mapping-grid">
+            <el-form-item label="姓名列">
+              <el-select
+                v-model="mapping.nameColumn"
+                :disabled="previewing || importing"
+                placeholder="请选择姓名列"
+                @change="refreshPreview"
+              >
+                <el-option
+                  v-for="column in preview.columns"
+                  :key="column.index"
+                  :label="column.header || `第 ${column.index + 1} 列`"
+                  :value="column.index"
+                />
+              </el-select>
+            </el-form-item>
+
+            <el-form-item v-if="activeTab === 'student'" label="身份证列">
+              <el-select
+                v-model="mapping.idColumn"
+                :disabled="previewing || importing"
+                placeholder="请选择身份证列"
+                @change="refreshPreview"
+              >
+                <el-option
+                  v-for="column in preview.columns"
+                  :key="column.index"
+                  :label="column.header || `第 ${column.index + 1} 列`"
+                  :value="column.index"
+                  :disabled="column.index === mapping.nameColumn"
+                />
+              </el-select>
+            </el-form-item>
+
+            <el-form-item v-else label="科目列">
+              <el-select
+                v-model="mapping.subjectColumns"
+                multiple
+                collapse-tags
+                collapse-tags-tooltip
+                :disabled="previewing || importing"
+                placeholder="请选择科目列"
+                @change="refreshPreview"
+              >
+                <el-option
+                  v-for="column in subjectOptions"
+                  :key="column.index"
+                  :label="column.header || `第 ${column.index + 1} 列`"
+                  :value="column.index"
+                />
+              </el-select>
+            </el-form-item>
+          </div>
+
+          <div v-if="preview.headerErrors.length" class="error-box">
+            <p v-for="error in preview.headerErrors" :key="error">{{ error }}</p>
+          </div>
+
+          <el-table
+            v-loading="previewing"
+            :data="preview.rows"
+            empty-text="没有可预览的数据"
+            max-height="360"
+            style="width: 100%"
+          >
+            <el-table-column prop="rowNumber" label="行" width="64" />
+            <el-table-column prop="studentName" label="姓名" width="120" />
+            <el-table-column prop="idCard" label="身份证" width="180" />
+            <el-table-column v-if="activeTab === 'student'" prop="className" label="班级" />
+            <el-table-column v-else label="科目成绩" min-width="240">
+              <template #default="{ row }">{{ formatSubjects(row.subjects) }}</template>
+            </el-table-column>
+            <el-table-column label="状态" width="240">
+              <template #default="{ row }">
+                <span :class="row.valid ? 'status-ok' : 'status-bad'">
+                  {{ row.valid ? '可导入' : row.message }}
+                </span>
+              </template>
+            </el-table-column>
+          </el-table>
+
+          <div v-if="visibleErrors.length" class="error-list">
+            <p>问题明细：</p>
+            <ul>
+              <li v-for="error in visibleErrors" :key="`${error.rowNumber}-${error.message}`">
+                第 {{ error.rowNumber }} 行：{{ error.message }}
+              </li>
+            </ul>
+            <p v-if="preview.errors.length > visibleErrors.length" class="more-errors">
+              仅显示前 {{ visibleErrors.length }} 条，共 {{ preview.errors.length }} 条。
+            </p>
+          </div>
+
+          <p v-if="fileError" class="file-error">{{ fileError }}</p>
+
+          <div class="form-actions">
+            <el-button
+              type="primary"
+              :loading="importing"
+              :disabled="importing || previewing || !canCommit"
+              @click="confirmImport"
+            >
+              确认导入
+            </el-button>
+            <el-button :disabled="importing || previewing" @click="removeFile">返回重选</el-button>
+            <span class="form-note">确认前请核对姓名、身份证和科目列</span>
+          </div>
+          <p v-if="!canCommit" class="form-hint">请先补全列映射并确保至少有一行有效数据。</p>
+        </template>
 
         <div v-if="resultMessage" class="result-box" :class="resultType">
           {{ resultMessage }}
         </div>
-
-        <p class="form-hint">{{ activeHint }}</p>
       </div>
     </div>
   </section>
@@ -473,6 +708,85 @@ onMounted(() => {
   color: var(--color-text-muted);
 }
 
+.preview-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.preview-head h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.preview-head p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.mapping-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+}
+
+.mapping-grid :deep(.el-select) {
+  width: 100%;
+}
+
+.error-box {
+  margin: 4px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid #f3c1bd;
+  border-radius: var(--radius-control);
+  background: #fff6f5;
+  color: var(--color-danger);
+  font-size: 13px;
+}
+
+.error-box p {
+  margin: 0;
+}
+
+.error-list {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.error-list p {
+  margin: 0;
+}
+
+.error-list ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  max-height: 160px;
+  overflow: auto;
+}
+
+.error-list li {
+  margin: 2px 0;
+}
+
+.more-errors {
+  margin-top: 6px !important;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.status-ok {
+  color: var(--color-success);
+}
+
+.status-bad {
+  color: var(--color-danger);
+}
+
 .result-box {
   margin-top: 16px;
   padding: 12px 14px;
@@ -505,12 +819,17 @@ onMounted(() => {
     font-size: 23px;
   }
 
-  .form-grid {
+  .form-grid,
+  .mapping-grid {
     grid-template-columns: 1fr;
   }
 
   .form-panel {
     padding: 16px;
+  }
+
+  .preview-head {
+    flex-direction: column;
   }
 }
 </style>
