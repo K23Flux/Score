@@ -1,51 +1,57 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
-import { getUserList, createUser, updateUser, deleteUser } from '@/api/user'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import {
-  PhPlus,
-  PhPencilSimple,
-  PhTrash,
-  PhArrowsClockwise,
-  PhUserPlus,
-  PhShield,
-} from '@phosphor-icons/vue'
-import { gsap } from 'gsap'
-import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import type { FormInstance, FormRules } from 'element-plus'
+import { createUser, deleteUser, getUserList, updateUser } from '@/api/user'
 import type { AdminUser } from '@/types'
 
-gsap.registerPlugin(ScrollTrigger)
-
 const loading = ref(false)
+const errorMessage = ref('')
 const userList = ref<AdminUser[]>([])
 const total = ref(0)
 const pagination = reactive({ pageNum: 1, pageSize: 10 })
+
 const dialogVisible = ref(false)
 const submitting = ref(false)
 const isEdit = ref(false)
-const formRef = ref()
+const formRef = ref<FormInstance>()
 const formData = reactive<AdminUser>({ userName: '', password: '', className: '' })
-const rules = {
-  userName: [{ required: true, message: 'REQUIRED', trigger: 'blur' }],
-  password: [{ required: true, message: 'REQUIRED', trigger: 'blur' }],
-  className: [{ required: true, message: 'REQUIRED', trigger: 'blur' }],
-}
+
+const rules = computed<FormRules>(() => ({
+  userName: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
+  password: isEdit.value
+    ? []
+    : [{ required: true, message: '请输入密码', trigger: 'blur' }],
+  className: [{ required: true, message: '请输入班级', trigger: 'blur' }],
+}))
 
 const loadData = async () => {
+  if (loading.value) return
   loading.value = true
+  errorMessage.value = ''
   try {
     const res = await getUserList(pagination.pageNum, pagination.pageSize)
     userList.value = res.data.records || []
     total.value = res.data.total || 0
-  } catch { ElMessage.error('DATA LOAD FAILED') }
-  finally { loading.value = false }
+  } catch {
+    userList.value = []
+    total.value = 0
+    errorMessage.value = '账户列表加载失败，请稍后重试。'
+  } finally {
+    loading.value = false
+  }
+}
+
+const resetForm = () => {
+  formData.userName = ''
+  formData.password = ''
+  formData.className = ''
+  nextTick(() => formRef.value?.clearValidate())
 }
 
 const openAddDialog = () => {
   isEdit.value = false
-  formData.userName = ''
-  formData.password = ''
-  formData.className = ''
+  resetForm()
   dialogVisible.value = true
 }
 
@@ -54,429 +60,287 @@ const openEditDialog = (row: AdminUser) => {
   formData.userName = row.userName
   formData.password = ''
   formData.className = row.className
+  nextTick(() => formRef.value?.clearValidate())
   dialogVisible.value = true
 }
 
 const handleSubmit = async () => {
-  await formRef.value.validate(async (valid: boolean) => {
-    if (!valid) return
-    submitting.value = true
-    try {
-      if (isEdit.value) {
-        await updateUser(formData)
-        ElMessage.success('RECORD UPDATED')
-      } else {
-        await createUser(formData)
-        ElMessage.success('USER CREATED')
-      }
-      dialogVisible.value = false
-      loadData()
-    } catch {}
-    finally { submitting.value = false }
-  })
+  if (submitting.value) return
+  formData.userName = formData.userName.trim()
+  formData.className = formData.className.trim()
+
+  formRef.value?.clearValidate()
+  const valid = await formRef.value?.validate().catch(() => false)
+  if (!valid) return
+
+  submitting.value = true
+  try {
+    if (isEdit.value) {
+      await updateUser({ userName: formData.userName, className: formData.className })
+      ElMessage.success('账户已更新')
+    } else {
+      await createUser({
+        userName: formData.userName,
+        password: formData.password,
+        className: formData.className,
+      })
+      ElMessage.success('账户已创建')
+    }
+    dialogVisible.value = false
+    loadData()
+  } catch {
+    // 请求错误由统一拦截器提示
+  } finally {
+    submitting.value = false
+  }
 }
 
 const handleDelete = async (row: AdminUser) => {
   try {
     await ElMessageBox.confirm(
-      `CONFIRM DELETE:\n${row.userName}\n\nTHIS ACTION CANNOT BE UNDONE.`,
-      'DELETE USER',
+      `确定删除账户“${row.userName}”吗？此操作不可恢复。`,
+      '删除账户',
       {
-        confirmButtonText: 'DELETE',
-        cancelButtonText: 'CANCEL',
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
         type: 'warning',
         distinguishCancelAndClose: true,
-      }
+      },
     )
     await deleteUser(row.userName)
-    ElMessage.success('USER REMOVED')
+    ElMessage.success('账户已删除')
     loadData()
-  } catch {}
+  } catch {
+    // 取消或请求错误
+  }
 }
 
-const handlePageChange = (page: number) => { pagination.pageNum = page; loadData() }
-const handleSizeChange = (size: number) => { pagination.pageSize = size; pagination.pageNum = 1; loadData() }
+const handlePageChange = (page: number) => {
+  pagination.pageNum = page
+  loadData()
+}
 
-let ctx: { revert: () => void } | null = null
+const handleSizeChange = (size: number) => {
+  pagination.pageSize = size
+  pagination.pageNum = 1
+  loadData()
+}
 
 onMounted(() => {
-  document.title = 'ScoreCheck — Users'
+  document.title = '用户管理 · 成绩查询平台'
   loadData()
-
-  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  if (prefersReduced) return
-
-  ctx = gsap.context(() => {
-    gsap.from('.user-card', {
-      opacity: 0,
-      y: 8,
-      stagger: 0.04,
-      duration: 0.3,
-      ease: 'power2.out',
-      delay: 0.15,
-    })
-  })
 })
-
-onBeforeUnmount(() => { ctx?.revert() })
 </script>
 
 <template>
-  <div class="scorecheck-page">
-    <!-- Header -->
-    <div class="page-header">
-      <div class="header-left">
-        <span class="header-bracket">[</span>
-        <h1 class="header-title">USER MANAGEMENT</h1>
-        <span class="header-bracket">]</span>
+  <section class="users-page">
+    <header class="page-head">
+      <div>
+        <h1>用户管理</h1>
+        <p>管理教师账户及其负责班级</p>
       </div>
-      <div class="header-meta">
-        <span class="meta-dot" />
-        <span class="meta-text">{{ total }} ACCOUNTS</span>
-      </div>
-      <button class="add-btn" @click="openAddDialog">
-        <PhUserPlus size="14" weight="bold" />
-        NEW USER
-      </button>
+      <el-button type="primary" @click="openAddDialog">新增账户</el-button>
+    </header>
+
+    <div v-if="!errorMessage && !loading" class="summary">共 <strong>{{ total }}</strong> 个账户</div>
+
+    <div v-if="errorMessage" class="panel state-panel">
+      <h2>账户列表加载失败</h2>
+      <p>{{ errorMessage }}</p>
+      <el-button @click="loadData">重试</el-button>
     </div>
 
-    <!-- User Cards -->
-    <div class="user-list">
-      <div
-        v-for="(user, index) in userList"
-        :key="user.userName"
-        class="user-card"
-        :class="{ even: index % 2 === 1 }"
+    <div v-else class="panel table-panel">
+      <el-table
+        v-loading="loading"
+        :data="userList"
+        empty-text="暂无账户记录"
+        style="width: 100%"
       >
-        <div class="user-card-left">
-          <div class="user-avatar">
-            {{ user.userName?.charAt(0)?.toUpperCase() || '?' }}
-          </div>
-          <div class="user-info">
-            <span class="user-name">{{ user.userName }}</span>
-            <span class="user-class">CLASS: {{ user.className || '--' }}</span>
-          </div>
-        </div>
-        <div class="user-card-right">
-          <span class="user-date">{{ user.createTime?.split(' ')[0] || '--' }}</span>
-          <div class="user-actions">
-            <button class="act edit" @click="openEditDialog(user)">
-              <PhPencilSimple size="12" weight="bold" />
-            </button>
-            <button class="act danger" @click="handleDelete(user)">
-              <PhTrash size="12" weight="bold" />
-            </button>
-          </div>
-        </div>
-      </div>
+        <el-table-column label="用户名" prop="userName" width="160" fixed="left">
+          <template #default="{ row }">
+            <span class="name-cell">{{ row.userName }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="班级" prop="className" min-width="150" />
+        <el-table-column label="创建时间" width="140">
+          <template #default="{ row }">
+            {{ row.createTime?.split(' ')[0] || '—' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="140" align="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openEditDialog(row)">编辑</el-button>
+            <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
 
-      <div v-if="!loading && userList.length === 0" class="empty-state">
-        <span class="empty-icon">[ ]</span>
-        <p class="empty-text">NO USER RECORDS FOUND</p>
+      <p class="table-hint">左右滑动可查看完整表格</p>
+
+      <div class="table-foot">
+        <span>第 {{ pagination.pageNum }} 页</span>
+        <el-pagination
+          v-model:current-page="pagination.pageNum"
+          v-model:page-size="pagination.pageSize"
+          :total="total"
+          :page-sizes="[10, 20, 50]"
+          layout="total, sizes, prev, pager, next"
+          @current-change="handlePageChange"
+          @size-change="handleSizeChange"
+        />
       </div>
     </div>
 
-    <!-- Pagination -->
-    <div class="pagination-wrap">
-      <el-pagination
-        v-model:current-page="pagination.pageNum"
-        v-model:page-size="pagination.pageSize"
-        :total="total"
-        :page-sizes="[10, 20, 50, 100]"
-        layout="total, sizes, prev, pager, next, jumper"
-        @current-change="handlePageChange"
-        @size-change="handleSizeChange"
-      />
-    </div>
-
-    <!-- Terminal Modal -->
     <el-dialog
       v-model="dialogVisible"
-      :title="isEdit ? 'EDIT USER' : 'NEW USER'"
-      width="440px"
+      :title="isEdit ? '编辑账户' : '新增账户'"
+      width="min(440px, calc(100vw - 32px))"
       :close-on-click-modal="false"
       align-center
     >
-      <el-form ref="formRef" :model="formData" :rules="rules" label-position="top" class="modal-form">
-        <el-form-item label="USERNAME" prop="userName">
-          <el-input v-model="formData.userName" placeholder="admin" :disabled="isEdit" />
+      <el-form ref="formRef" :model="formData" :rules="rules" label-position="top">
+        <el-form-item label="用户名" prop="userName">
+          <el-input v-model="formData.userName" :disabled="isEdit" placeholder="请输入用户名" />
         </el-form-item>
-        <el-form-item label="PASSWORD" :prop="isEdit ? '' : 'password'">
+        <el-form-item v-if="!isEdit" label="密码" prop="password">
           <el-input
             v-model="formData.password"
             type="password"
             show-password
-            :placeholder="isEdit ? 'LEAVE BLANK TO KEEP' : 'ENTER PASSWORD'"
+            autocomplete="new-password"
+            placeholder="请输入密码"
           />
         </el-form-item>
-        <el-form-item label="CLASS" prop="className">
-          <el-input v-model="formData.className" placeholder="2026 Grade Class 1" />
+        <el-form-item label="班级" prop="className">
+          <el-input v-model="formData.className" placeholder="如：高一(2)班" />
         </el-form-item>
+        <p v-if="isEdit" class="dialog-note">编辑账户仅可修改班级。</p>
       </el-form>
+
       <template #footer>
-        <el-button @click="dialogVisible = false">CANCEL</el-button>
-        <el-button type="primary" @click="handleSubmit" :loading="submitting">
-          {{ isEdit ? 'UPDATE' : 'CREATE' }}
+        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="handleSubmit">
+          {{ isEdit ? '保存' : '创建' }}
         </el-button>
       </template>
     </el-dialog>
-  </div>
+  </section>
 </template>
 
 <style scoped>
-.scorecheck-page {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+.users-page {
+  max-width: 1400px;
 }
 
-/* --- Header --- */
-.page-header {
+.page-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 12px 0;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
 }
 
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 0;
-}
-
-.header-bracket {
-  font-size: 22px;
-  font-weight: 300;
-  color: var(--amber);
-  line-height: 1.2;
-}
-
-.header-title {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--text-primary);
-  letter-spacing: 0.1em;
-  line-height: 1.2;
-}
-
-.header-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-  padding-top: 6px;
-}
-
-.meta-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  background: var(--emerald);
-  animation: breathe 3s ease-in-out infinite;
-}
-
-.meta-text {
-  font-size: 11px;
-  color: var(--text-muted);
-  font-weight: 500;
-  letter-spacing: 0.08em;
-}
-
-.add-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 36px;
-  padding: 0 16px;
-  border: 1px solid var(--border);
-  border-radius: 0;
-  background: transparent;
-  color: var(--text-secondary);
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
+.page-head h1 {
+  margin: 0 0 4px;
+  font-size: 26px;
+  line-height: 1.25;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  cursor: pointer;
-  transition: all var(--fast) var(--ease-out);
-  flex-shrink: 0;
-  padding-top: 10px;
+  color: var(--color-text);
 }
 
-.add-btn:hover {
-  border-color: var(--amber);
-  color: var(--amber);
-  background: var(--amber-bg);
+.page-head p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-muted);
 }
 
-/* --- User List --- */
-.user-list {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  background: var(--border);
-  border: 1px solid var(--border);
+.panel {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  background: var(--color-surface);
 }
 
-.user-card {
-  background: var(--bg);
-  padding: 14px 16px;
+.summary {
+  padding: 0 2px 12px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.summary strong {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.table-panel {
+  overflow: hidden;
+}
+
+.name-cell {
+  font-weight: 600;
+}
+
+.table-hint {
+  display: none;
+  margin: 0;
+  padding: 8px 16px 12px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.table-foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  transition: background var(--fast) var(--ease-out);
-}
-
-.user-card.even {
-  background: var(--bg-deep);
-}
-
-.user-card:hover {
-  background: var(--surface);
-}
-
-.user-card-left {
-  display: flex;
-  align-items: center;
   gap: 12px;
-  flex: 1;
-  min-width: 0;
-}
-
-.user-avatar {
-  width: 36px;
-  height: 36px;
-  border: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--amber);
-  flex-shrink: 0;
-}
-
-.user-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.user-name {
+  padding: 12px 16px;
+  border-top: 1px solid var(--color-border);
   font-size: 13px;
+  color: var(--color-text-muted);
+  flex-wrap: wrap;
+}
+
+.state-panel {
+  padding: 48px 24px;
+  text-align: center;
+}
+
+.state-panel h2 {
+  margin: 0 0 6px;
+  font-size: 16px;
   font-weight: 600;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  color: var(--color-danger);
 }
 
-.user-class {
-  font-size: 11px;
-  color: var(--text-muted);
-  letter-spacing: 0.03em;
+.state-panel p {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: var(--color-text-muted);
 }
 
-.user-card-right {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-shrink: 0;
-}
-
-.user-date {
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-.user-actions {
-  display: flex;
-  gap: 4px;
-}
-
-.act {
-  width: 26px;
-  height: 26px;
-  border: 1px solid var(--border);
-  border-radius: 0;
-  background: transparent;
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all var(--fast) var(--ease-out);
-}
-
-.act.edit:hover {
-  border-color: var(--blue);
-  color: var(--blue);
-  background: var(--blue-bg);
-}
-
-.act.danger:hover {
-  border-color: var(--red);
-  color: var(--red);
-  background: var(--red-bg);
-}
-
-/* --- Empty State --- */
-.empty-state {
-  padding: 48px 16px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
-
-.empty-icon {
-  font-size: 14px;
-  color: var(--text-muted);
-  letter-spacing: 0.1em;
-}
-
-.empty-text {
+.dialog-note {
+  margin: -4px 0 0;
   font-size: 12px;
-  color: var(--text-muted);
-  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
 }
 
-/* --- Pagination --- */
-.pagination-wrap {
-  padding-top: 4px;
+@media (max-width: 1100px) {
+  .table-hint {
+    display: block;
+  }
 }
 
-/* --- Modal Form --- */
-.modal-form :deep(.el-form-item__label) {
-  font-size: 10px !important;
-  font-weight: 600 !important;
-  letter-spacing: 0.08em !important;
-  color: var(--text-muted) !important;
-}
+@media (max-width: 767px) {
+  .page-head h1 {
+    font-size: 23px;
+  }
 
-.modal-form :deep(.el-input__wrapper) {
-  background: var(--bg-deep);
-  border-radius: 0;
-}
-
-/* --- Responsive --- */
-@media (max-width: 768px) {
-  .user-card {
-    flex-direction: column;
+  .table-foot {
     align-items: flex-start;
-    gap: 10px;
-  }
-
-  .user-card-right {
-    width: 100%;
-    justify-content: space-between;
-  }
-
-  .page-header {
     flex-direction: column;
-    gap: 12px;
   }
 }
 </style>

@@ -1,391 +1,320 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { getStudentList } from '@/api/student'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { PhMagnifyingGlass, PhArrowsClockwise, PhTrash } from '@phosphor-icons/vue'
-import { gsap } from 'gsap'
-import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import type { Student } from '@/types'
 
-gsap.registerPlugin(ScrollTrigger)
-
 const loading = ref(false)
+const errorMessage = ref('')
 const studentList = ref<Student[]>([])
 const total = ref(0)
 const searchForm = reactive({ className: '' })
 const pagination = reactive({ pageNum: 1, pageSize: 10 })
 
 const loadData = async () => {
+  if (loading.value) return
   loading.value = true
+  errorMessage.value = ''
   try {
-    const res = await getStudentList({ className: searchForm.className, pageNum: pagination.pageNum, pageSize: pagination.pageSize })
+    const res = await getStudentList({
+      className: searchForm.className.trim(),
+      pageNum: pagination.pageNum,
+      pageSize: pagination.pageSize,
+    })
     studentList.value = res.data.records || []
     total.value = res.data.total || 0
-  } catch { ElMessage.error('DATA LOAD FAILED') }
-  finally { loading.value = false }
+  } catch {
+    studentList.value = []
+    total.value = 0
+    errorMessage.value = '学生信息加载失败，请稍后重试。'
+  } finally {
+    loading.value = false
+  }
 }
 
-const handleSearch = () => { pagination.pageNum = 1; loadData() }
-const handleReset = () => { searchForm.className = ''; pagination.pageNum = 1; loadData() }
-const handleDelete = async (row: Student) => {
-  try {
-    await ElMessageBox.confirm(`DELETE RECORD: ${row.studentName}?`, 'CONFIRM ACTION', {
-      confirmButtonText: 'DELETE',
-      cancelButtonText: 'CANCEL',
-      type: 'warning',
-    })
-    ElMessage.warning('INTERFACE NOT IMPLEMENTED')
-  } catch {}
+const handleSearch = () => {
+  pagination.pageNum = 1
+  loadData()
 }
-const handlePageChange = (page: number) => { pagination.pageNum = page; loadData() }
-const handleSizeChange = (size: number) => { pagination.pageSize = size; pagination.pageNum = 1; loadData() }
 
-let ctx: { revert: () => void } | null = null
+const handleReset = () => {
+  searchForm.className = ''
+  pagination.pageNum = 1
+  loadData()
+}
+
+const handlePageChange = (page: number) => {
+  pagination.pageNum = page
+  loadData()
+}
+
+const handleSizeChange = (size: number) => {
+  pagination.pageSize = size
+  pagination.pageNum = 1
+  loadData()
+}
 
 onMounted(() => {
-  document.title = 'ScoreCheck — Students'
+  document.title = '学生管理 · 成绩查询平台'
   loadData()
-
-  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  if (prefersReduced) return
-
-  ctx = gsap.context(() => {
-    gsap.from('.terminal-table', {
-      opacity: 0,
-      y: 12,
-      duration: 0.4,
-      ease: 'power2.out',
-      delay: 0.2,
-    })
-  })
 })
-
-onBeforeUnmount(() => { ctx?.revert() })
 </script>
 
 <template>
-  <div class="scorecheck-page">
-    <!-- Page Header -->
-    <div class="page-header">
-      <div class="header-left">
-        <span class="header-bracket">[</span>
-        <h1 class="header-title">STUDENT MANAGEMENT</h1>
-        <span class="header-bracket">]</span>
+  <section class="students-page">
+    <header class="page-head">
+      <div>
+        <h1>学生管理</h1>
+        <p>按班级查看已导入的学生信息</p>
       </div>
-      <div class="header-meta">
-        <span class="meta-dot" />
-        <span class="meta-text">{{ total }} RECORDS</span>
+      <el-button @click="loadData" :loading="loading">刷新</el-button>
+    </header>
+
+    <div class="panel filter-bar">
+      <div class="filter-field">
+        <label for="student-class">班级</label>
+        <el-input
+          id="student-class"
+          v-model="searchForm.className"
+          placeholder="输入班级名称"
+          clearable
+          @keydown.enter="handleSearch"
+        />
+      </div>
+      <div class="filter-actions">
+        <el-button type="primary" @click="handleSearch" :loading="loading">查询</el-button>
+        <el-button @click="handleReset">重置</el-button>
       </div>
     </div>
 
-    <!-- Search Bar -->
-    <div class="search-bar">
-      <el-input
-        v-model="searchForm.className"
-        placeholder="> FILTER BY CLASS..."
-        clearable
-        class="search-input"
-        :prefix-icon="PhMagnifyingGlass"
-        @keyup.enter="handleSearch"
-      />
-      <el-button type="primary" @click="handleSearch" :loading="loading">SEARCH</el-button>
-      <el-button @click="handleReset">RESET</el-button>
-      <el-button circle :icon="PhArrowsClockwise" @click="loadData" />
+    <div v-if="!errorMessage && !loading" class="summary">共 <strong>{{ total }}</strong> 名学生</div>
+
+    <div v-if="errorMessage" class="panel state-panel">
+      <h2>学生信息加载失败</h2>
+      <p>{{ errorMessage }}</p>
+      <el-button @click="loadData">重试</el-button>
     </div>
 
-    <!-- Terminal Table -->
-    <div class="terminal-table">
+    <div v-else class="panel table-panel">
       <el-table
         v-loading="loading"
         :data="studentList"
+        empty-text="暂无学生记录"
         style="width: 100%"
-        empty-text="NO STUDENT RECORDS FOUND"
       >
-        <el-table-column type="index" width="48" align="center">
-          <template #header>
-            <span class="col-label">#</span>
+        <el-table-column label="姓名" prop="studentName" width="120" fixed="left">
+          <template #default="{ row }">
+            <span class="name-cell">{{ row.studentName }}</span>
           </template>
         </el-table-column>
-
-        <el-table-column label="NAME" min-width="180">
-          <template #header>
-            <span class="col-label">NAME</span>
-          </template>
+        <el-table-column label="班级" prop="className" width="130" />
+        <el-table-column label="身份证号" prop="idCard" min-width="190">
           <template #default="{ row }">
-            <div class="stu-cell">
-              <span class="stu-avatar">{{ row.studentName?.charAt(0) || '?' }}</span>
-              <span class="stu-name">{{ row.studentName }}</span>
-            </div>
+            <span class="mono">{{ row.idCard || '—' }}</span>
           </template>
         </el-table-column>
-
-        <el-table-column label="CLASS" width="140">
-          <template #header>
-            <span class="col-label">CLASS</span>
-          </template>
+        <el-table-column label="录入日期" width="130">
           <template #default="{ row }">
-            <span class="class-text">{{ row.className || '--' }}</span>
+            {{ row.createTime?.split(' ')[0] || '—' }}
           </template>
         </el-table-column>
-
-        <el-table-column label="ID CARD" width="200">
-          <template #header>
-            <span class="col-label">ID</span>
-          </template>
+        <el-table-column label="状态" width="100">
           <template #default="{ row }">
-            <span class="id-text">{{ row.idCard || '--' }}</span>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="REGISTERED" width="170">
-          <template #header>
-            <span class="col-label">DATE</span>
-          </template>
-          <template #default="{ row }">
-            <span class="date-text">{{ row.createTime || '--' }}</span>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="STATUS" width="90" align="center">
-          <template #header>
-            <span class="col-label">STS</span>
-          </template>
-          <template #default="{ row }">
-            <span class="status-pill" :class="row.delFlag === '1' ? 'deleted' : 'active'">
-              {{ row.delFlag === '1' ? 'DEL' : 'OK' }}
+            <span class="status" :class="{ inactive: row.delFlag === '1' }">
+              <i />
+              {{ row.delFlag === '1' ? '停用' : '在读' }}
             </span>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="" width="56" align="center">
-          <template #default="{ row }">
-            <button class="del-btn" @click="handleDelete(row)">
-              <PhTrash size="13" weight="bold" />
-            </button>
           </template>
         </el-table-column>
       </el-table>
 
-      <!-- Pagination -->
-      <div class="pagination-wrap">
+      <p class="table-hint">左右滑动可查看完整表格</p>
+
+      <div class="table-foot">
+        <span>第 {{ pagination.pageNum }} 页</span>
         <el-pagination
           v-model:current-page="pagination.pageNum"
           v-model:page-size="pagination.pageSize"
           :total="total"
-          :page-sizes="[10, 20, 50, 100]"
-          layout="total, sizes, prev, pager, next, jumper"
+          :page-sizes="[10, 20, 50]"
+          layout="total, sizes, prev, pager, next"
           @current-change="handlePageChange"
           @size-change="handleSizeChange"
         />
       </div>
     </div>
-  </div>
+  </section>
 </template>
 
 <style scoped>
-.scorecheck-page {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+.students-page {
+  max-width: 1400px;
 }
 
-/* --- Header --- */
-.page-header {
+.page-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 12px 0;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
 }
 
-.header-left {
+.page-head h1 {
+  margin: 0 0 4px;
+  font-size: 26px;
+  line-height: 1.25;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.page-head p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.panel {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  background: var(--color-surface);
+}
+
+.filter-bar {
   display: flex;
-  align-items: center;
-  gap: 0;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
 }
 
-.header-bracket {
-  font-size: 22px;
-  font-weight: 300;
-  color: var(--amber);
-  line-height: 1.2;
+.filter-field {
+  flex: 1;
+  min-width: 180px;
 }
 
-.header-title {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--text-primary);
-  letter-spacing: 0.1em;
-  line-height: 1.2;
-}
-
-.header-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-  padding-top: 6px;
-}
-
-.meta-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  background: var(--emerald);
-  animation: breathe 3s ease-in-out infinite;
-}
-
-.meta-text {
-  font-size: 11px;
-  color: var(--text-muted);
+.filter-field label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
   font-weight: 500;
-  letter-spacing: 0.08em;
+  color: var(--color-text-secondary);
 }
 
-/* --- Search Bar --- */
-.search-bar {
+.filter-actions {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  gap: 8px;
 }
 
-.search-input {
-  width: 220px;
+.summary {
+  padding: 0 2px 12px;
+  font-size: 13px;
+  color: var(--color-text-muted);
 }
 
-.search-input :deep(.el-input__wrapper) {
-  background: var(--bg-deep);
-  border-radius: 0;
+.summary strong {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
 }
 
-/* --- Terminal Table --- */
-.terminal-table {
-  background: var(--bg);
-  border: 1px solid var(--border);
+.table-panel {
   overflow: hidden;
 }
 
-.col-label {
-  font-size: 10px;
+.name-cell {
   font-weight: 600;
-  color: var(--text-muted);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
 }
 
-/* Student cell */
-.stu-cell {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.mono {
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
 }
 
-.stu-avatar {
-  width: 30px;
-  height: 30px;
-  border: 1px solid var(--border);
-  display: flex;
+.status {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
+  gap: 6px;
   font-size: 13px;
-  font-weight: 700;
-  color: var(--amber);
+  color: var(--color-success);
+  white-space: nowrap;
+}
+
+.status i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
   flex-shrink: 0;
 }
 
-.stu-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
+.status.inactive {
+  color: var(--color-text-muted);
 }
 
-.class-text {
+.table-hint {
+  display: none;
+  margin: 0;
+  padding: 8px 16px 12px;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--color-text-muted);
 }
 
-.id-text {
-  font-size: 12px;
-  color: var(--text-muted);
-  font-family: 'IBM Plex Mono', monospace;
-  letter-spacing: 0.03em;
-}
-
-.date-text {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-/* Status pill */
-.status-pill {
-  font-size: 10px;
-  font-weight: 700;
-  padding: 2px 8px;
-  letter-spacing: 0.06em;
-}
-
-.status-pill.active {
-  color: var(--emerald);
-}
-
-.status-pill.deleted {
-  color: var(--red);
-}
-
-/* Delete button */
-.del-btn {
-  width: 26px;
-  height: 26px;
-  border: 1px solid var(--border);
-  border-radius: 0;
-  background: transparent;
-  color: var(--text-muted);
+.table-foot {
   display: flex;
   align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all var(--fast) var(--ease-out);
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--color-border);
+  font-size: 13px;
+  color: var(--color-text-muted);
+  flex-wrap: wrap;
 }
 
-.del-btn:hover {
-  border-color: var(--red);
-  color: var(--red);
-  background: var(--red-bg);
+.state-panel {
+  padding: 48px 24px;
+  text-align: center;
 }
 
-/* Alternating rows */
-.el-table .el-table__row:nth-child(even) {
-  background-color: var(--bg-deep) !important;
+.state-panel h2 {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-danger);
 }
 
-.el-table .el-table__row:hover {
-  background-color: var(--surface) !important;
+.state-panel p {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: var(--color-text-muted);
 }
 
-/* Pagination */
-.pagination-wrap {
-  padding: 10px 0 0;
-  display: flex;
-  justify-content: flex-end;
+@media (max-width: 1100px) {
+  .table-hint {
+    display: block;
+  }
 }
 
-/* --- Responsive --- */
-@media (max-width: 768px) {
-  .header-title {
-    font-size: 18px;
-    letter-spacing: 0.06em;
+@media (max-width: 767px) {
+  .page-head h1 {
+    font-size: 23px;
   }
 
-  .search-bar {
+  .filter-bar {
     flex-direction: column;
     align-items: stretch;
+    padding: 14px;
   }
 
-  .search-input {
-    width: 100%;
+  .filter-actions :deep(.el-button) {
+    flex: 1;
+  }
+
+  .table-foot {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 </style>

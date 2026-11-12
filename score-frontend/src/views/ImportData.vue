@@ -1,519 +1,516 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
-import { importStudent, importScore } from '@/api/import'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { PhUploadSimple, PhStudent, PhExam, PhFileCsv } from '@phosphor-icons/vue'
+import type { FormInstance, FormRules } from 'element-plus'
+import { PhFileCsv, PhUploadSimple } from '@phosphor-icons/vue'
+import { importScore, importStudent } from '@/api/import'
 import { useAuthStore } from '@/stores/auth'
-import { gsap } from 'gsap'
-import { ScrollTrigger } from 'gsap/ScrollTrigger'
 
-gsap.registerPlugin(ScrollTrigger)
+type ImportTab = 'student' | 'score'
 
 const authStore = useAuthStore()
-const activeTab = ref('student')
-const studentLoading = ref(false)
-const scoreLoading = ref(false)
+
+const activeTab = ref<ImportTab>('student')
+const studentFormRef = ref<FormInstance>()
+const scoreFormRef = ref<FormInstance>()
+const fileInput = ref<HTMLInputElement | null>(null)
+const selectedFile = ref<File | null>(null)
+const fileError = ref('')
+const importing = ref(false)
+const dragActive = ref(false)
+const resultMessage = ref('')
+const resultType = ref<'success' | 'warning' | 'error' | ''>('')
+
 const studentForm = reactive({ className: authStore.className || '' })
 const scoreForm = reactive({ examName: '', className: authStore.className || '' })
-const studentFileList = ref<any[]>([])
-const scoreFileList = ref<any[]>([])
-const studentDrag = ref(false)
-const scoreDrag = ref(false)
 
-const handleStudentDrop = (e: DragEvent) => {
-  studentDrag.value = false
-  const f = e.dataTransfer?.files[0]
-  if (f) studentFileList.value = [{ raw: f, name: f.name }]
+const studentRules: FormRules = {
+  className: [{ required: true, message: '请输入班级', trigger: 'blur' }],
 }
 
-const handleScoreDrop = (e: DragEvent) => {
-  scoreDrag.value = false
-  const f = e.dataTransfer?.files[0]
-  if (f) scoreFileList.value = [{ raw: f, name: f.name }]
+const scoreRules: FormRules = {
+  examName: [{ required: true, message: '请输入考试名称', trigger: 'blur' }],
+  className: [{ required: true, message: '请输入班级', trigger: 'blur' }],
 }
 
-const handleStudentImport = async () => {
-  if (!studentForm.className) { ElMessage.warning('INPUT CLASS NAME'); return }
-  if (studentFileList.value.length === 0) { ElMessage.warning('NO FILE SELECTED'); return }
-  studentLoading.value = true
-  try {
-    await importStudent(studentFileList.value[0].raw, studentForm.className)
-    ElMessage.success('STUDENT DATA IMPORTED')
-    studentFileList.value = []
-    studentForm.className = ''
-  } catch {}
-  finally { studentLoading.value = false }
-}
+const activeHint = computed(() => activeTab.value === 'student'
+  ? '学生表表头：姓名、身份证；班级以上方填写为准。'
+  : '成绩表第一列：姓名，其余列为科目。请先导入学生，再导入成绩。')
 
-const handleScoreImport = async () => {
-  if (!scoreForm.examName) { ElMessage.warning('INPUT EXAM NAME'); return }
-  if (!scoreForm.className) { ElMessage.warning('INPUT CLASS NAME'); return }
-  if (scoreFileList.value.length === 0) { ElMessage.warning('NO FILE SELECTED'); return }
-  scoreLoading.value = true
-  try {
-    await importScore(scoreFileList.value[0].raw, scoreForm.examName, scoreForm.className)
-    ElMessage.success('SCORE DATA IMPORTED')
-    scoreFileList.value = []
-    scoreForm.examName = ''
-    scoreForm.className = ''
-  } catch {}
-  finally { scoreLoading.value = false }
-}
-
-const beforeUpload = (file: any) => {
-  const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls')
-  const isLt10M = file.size / 1024 / 1024 < 10
-  if (!isExcel) { ElMessage.error('EXCEL FILES ONLY (.xlsx/.xls)') }
-  if (!isLt10M) { ElMessage.error('FILE SIZE MUST BE < 10MB') }
-  return isExcel && isLt10M
-}
-
-let ctx: { revert: () => void } | null = null
-
-onMounted(() => {
-  document.title = 'ScoreCheck — Import'
-
-  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  if (prefersReduced) return
-
-  ctx = gsap.context(() => {
-    gsap.from('.tab-bar', {
-      opacity: 0,
-      y: 10,
-      duration: 0.3,
-      ease: 'power2.out',
-      delay: 0.1,
-    })
-    gsap.from('.import-flow', {
-      opacity: 0,
-      y: 12,
-      duration: 0.4,
-      ease: 'power2.out',
-      delay: 0.2,
-    })
-  })
+const fileSizeText = computed(() => {
+  if (!selectedFile.value) return ''
+  const bytes = selectedFile.value.size
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 })
 
-onBeforeUnmount(() => { ctx?.revert() })
+const switchTab = (tab: ImportTab) => {
+  if (importing.value || activeTab.value === tab) return
+  activeTab.value = tab
+  selectedFile.value = null
+  fileError.value = ''
+  resultMessage.value = ''
+  resultType.value = ''
+}
+
+const validateFile = (file: File) => {
+  const name = file.name.toLowerCase()
+  if (!/\.(xlsx|xls)$/.test(name)) return '仅支持 .xlsx 或 .xls 文件'
+  if (file.size === 0) return '文件为空，请重新选择'
+  if (file.size > 10 * 1024 * 1024) return '文件大小不能超过 10MB'
+  return ''
+}
+
+const acceptFile = (file: File) => {
+  const error = validateFile(file)
+  if (error) {
+    selectedFile.value = null
+    fileError.value = error
+    return
+  }
+  selectedFile.value = file
+  fileError.value = ''
+  resultMessage.value = ''
+  resultType.value = ''
+}
+
+const handleFileChange = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  const files = Array.from(target.files || [])
+  if (files.length > 1) {
+    selectedFile.value = null
+    fileError.value = '一次只能导入一个文件'
+  } else if (files[0]) {
+    acceptFile(files[0])
+  }
+  target.value = ''
+}
+
+const handleDrop = (event: DragEvent) => {
+  dragActive.value = false
+  if (importing.value) return
+  const files = Array.from(event.dataTransfer?.files || [])
+  if (files.length > 1) {
+    selectedFile.value = null
+    fileError.value = '一次只能导入一个文件'
+    return
+  }
+  if (files[0]) acceptFile(files[0])
+}
+
+const triggerFilePicker = () => {
+  if (importing.value) return
+  fileInput.value?.click()
+}
+
+const removeFile = () => {
+  if (importing.value) return
+  selectedFile.value = null
+  fileError.value = ''
+  resultMessage.value = ''
+  resultType.value = ''
+}
+
+const handleImport = async () => {
+  if (importing.value) return
+
+  const formRef = activeTab.value === 'student' ? studentFormRef.value : scoreFormRef.value
+  const form = activeTab.value === 'student' ? studentForm : scoreForm
+
+  form.className = form.className.trim()
+  if (activeTab.value === 'score') scoreForm.examName = scoreForm.examName.trim()
+
+  formRef?.clearValidate()
+  const valid = await formRef?.validate().catch(() => false)
+  if (!valid) return
+
+  if (!selectedFile.value) {
+    fileError.value = '请选择 Excel 文件'
+    return
+  }
+
+  const error = validateFile(selectedFile.value)
+  if (error) {
+    fileError.value = error
+    return
+  }
+
+  importing.value = true
+  resultMessage.value = ''
+  resultType.value = ''
+
+  try {
+    const file = selectedFile.value
+    const res = activeTab.value === 'student'
+      ? await importStudent(file, studentForm.className)
+      : await importScore(file, scoreForm.examName, scoreForm.className)
+
+    const message = typeof res.data === 'string' && res.data
+      ? res.data
+      : (activeTab.value === 'student' ? '学生信息导入成功' : '成绩导入成功')
+
+    resultMessage.value = message
+    resultType.value = /(^|\D)0\s*条/.test(message) ? 'warning' : 'success'
+    selectedFile.value = null
+    if (resultType.value === 'warning') ElMessage.warning('导入完成，请检查结果')
+    else ElMessage.success('导入完成')
+  } catch {
+    resultMessage.value = '导入失败，请检查文件内容后重试。'
+    resultType.value = 'error'
+  } finally {
+    importing.value = false
+  }
+}
+
+onMounted(() => {
+  document.title = '数据导入 · 成绩查询平台'
+})
 </script>
 
 <template>
-  <div class="scorecheck-page">
-    <!-- Header -->
-    <div class="page-header">
-      <div class="header-left">
-        <span class="header-bracket">[</span>
-        <h1 class="header-title">DATA IMPORT</h1>
-        <span class="header-bracket">]</span>
+  <section class="import-page">
+    <header class="page-head">
+      <div>
+        <h1>数据导入</h1>
+        <p>先导入学生信息，再导入考试成绩</p>
       </div>
-      <div class="header-meta">
-        <span class="meta-dot" />
-        <span class="meta-text">BATCH UPLOAD SYSTEM</span>
-      </div>
-    </div>
+    </header>
 
-    <!-- Tab Bar -->
-    <div class="tab-bar">
-      <button
-        class="tab-btn"
-        :class="{ active: activeTab === 'student' }"
-        @click="activeTab = 'student'"
-      >
-        <PhStudent size="14" weight="regular" />
-        <span>STUDENT DATA</span>
-      </button>
-      <button
-        class="tab-btn"
-        :class="{ active: activeTab === 'score' }"
-        @click="activeTab = 'score'"
-      >
-        <PhExam size="14" weight="regular" />
-        <span>SCORE DATA</span>
-      </button>
-    </div>
-
-    <!-- Student Import Flow -->
-    <div v-show="activeTab === 'student'" class="import-flow animate-fade-in">
-      <!-- Step 1: Class Info -->
-      <div class="step-card">
-        <div class="step-marker">01</div>
-        <div class="step-body">
-          <h3 class="step-title">CLASS INFORMATION</h3>
-          <p class="step-desc">Specify class for data grouping</p>
-          <el-input
-            v-model="studentForm.className"
-            placeholder="e.g. 2026 Grade Class 1"
-            size="large"
-          />
-        </div>
+    <div class="panel">
+      <div class="tabs" role="tablist" aria-label="导入类型">
+        <button
+          class="tab"
+          type="button"
+          role="tab"
+          :aria-selected="activeTab === 'student'"
+          :disabled="importing"
+          @click="switchTab('student')"
+        >
+          学生信息
+        </button>
+        <button
+          class="tab"
+          type="button"
+          role="tab"
+          :aria-selected="activeTab === 'score'"
+          :disabled="importing"
+          @click="switchTab('score')"
+        >
+          考试成绩
+        </button>
       </div>
 
-      <!-- Step 2: File Drop Zone -->
-      <div class="step-card">
-        <div class="step-marker">02</div>
-        <div class="step-body">
-          <h3 class="step-title">SELECT FILE</h3>
-          <p class="step-desc">Upload Excel file with student records</p>
-          <div
-            class="drop-zone"
-            :class="{ 'drop-active': studentDrag }"
-            @dragover.prevent="studentDrag = true"
-            @dragleave.prevent="studentDrag = false"
-            @drop.prevent="handleStudentDrop"
-          >
-            <PhFileCsv size="28" weight="duotone" class="drop-icon" />
-            <p class="drop-text">DRAG FILE HERE OR</p>
-            <el-upload
-              v-model:file-list="studentFileList"
-              class="upload-btn"
-              :auto-upload="false"
-              accept=".xlsx,.xls"
-              :before-upload="beforeUpload"
-              :limit="1"
-            >
-              <el-button size="default" type="primary" class="amber-outline">SELECT FILE</el-button>
-            </el-upload>
-            <p v-if="studentFileList.length > 0" class="file-name">
-              <span class="file-prefix">&gt;</span> {{ studentFileList[0].name }}
-            </p>
-            <p class="drop-hint">.xlsx / .xls &middot; MAX 10MB</p>
-          </div>
-        </div>
-      </div>
+      <div class="form-panel">
+        <el-form
+          v-show="activeTab === 'student'"
+          ref="studentFormRef"
+          :model="studentForm"
+          :rules="studentRules"
+          label-position="top"
+          @submit.prevent
+        >
+          <el-form-item label="班级" prop="className">
+            <el-input
+              v-model="studentForm.className"
+              :disabled="importing"
+              placeholder="如：高一(2)班"
+            />
+          </el-form-item>
+        </el-form>
 
-      <!-- Step 3: Submit -->
-      <button
-        class="submit-btn"
-        :loading="studentLoading"
-        @click="handleStudentImport"
-      >
-        <PhUploadSimple v-if="!studentLoading" size="16" weight="bold" />
-        <span>{{ studentLoading ? 'PROCESSING...' : 'IMPORT STUDENT DATA' }}</span>
-      </button>
-    </div>
-
-    <!-- Score Import Flow -->
-    <div v-show="activeTab === 'score'" class="import-flow animate-fade-in">
-      <!-- Step 1: Exam Info -->
-      <div class="step-card">
-        <div class="step-marker">01</div>
-        <div class="step-body">
-          <h3 class="step-title">EXAM INFORMATION</h3>
-          <p class="step-desc">Specify exam and class details</p>
-          <el-form :model="scoreForm" label-position="top" class="step-form">
-            <el-form-item label="EXAM NAME">
-              <el-input v-model="scoreForm.examName" placeholder="e.g. 2026 Semester Midterm" size="large" />
+        <el-form
+          v-show="activeTab === 'score'"
+          ref="scoreFormRef"
+          :model="scoreForm"
+          :rules="scoreRules"
+          label-position="top"
+          @submit.prevent
+        >
+          <div class="form-grid">
+            <el-form-item label="考试名称" prop="examName">
+              <el-input
+                v-model="scoreForm.examName"
+                :disabled="importing"
+                placeholder="如：期中考试"
+              />
             </el-form-item>
-            <el-form-item label="CLASS NAME">
-              <el-input v-model="scoreForm.className" placeholder="e.g. 2026 Grade Class 1" size="large" />
+            <el-form-item label="班级" prop="className">
+              <el-input
+                v-model="scoreForm.className"
+                :disabled="importing"
+                placeholder="如：高一(2)班"
+              />
             </el-form-item>
-          </el-form>
-        </div>
-      </div>
-
-      <!-- Step 2: File Drop Zone -->
-      <div class="step-card">
-        <div class="step-marker">02</div>
-        <div class="step-body">
-          <h3 class="step-title">SELECT FILE</h3>
-          <p class="step-desc">Upload Excel file with score records</p>
-          <div
-            class="drop-zone"
-            :class="{ 'drop-active': scoreDrag }"
-            @dragover.prevent="scoreDrag = true"
-            @dragleave.prevent="scoreDrag = false"
-            @drop.prevent="handleScoreDrop"
-          >
-            <PhFileCsv size="28" weight="duotone" class="drop-icon" />
-            <p class="drop-text">DRAG FILE HERE OR</p>
-            <el-upload
-              v-model:file-list="scoreFileList"
-              class="upload-btn"
-              :auto-upload="false"
-              accept=".xlsx,.xls"
-              :before-upload="beforeUpload"
-              :limit="1"
-            >
-              <el-button size="default" type="primary" class="amber-outline">SELECT FILE</el-button>
-            </el-upload>
-            <p v-if="scoreFileList.length > 0" class="file-name">
-              <span class="file-prefix">&gt;</span> {{ scoreFileList[0].name }}
-            </p>
-            <p class="drop-hint">.xlsx / .xls &middot; MAX 10MB</p>
           </div>
-        </div>
-      </div>
+        </el-form>
 
-      <!-- Step 3: Submit -->
-      <button
-        class="submit-btn"
-        :loading="scoreLoading"
-        @click="handleScoreImport"
-      >
-        <PhUploadSimple v-if="!scoreLoading" size="16" weight="bold" />
-        <span>{{ scoreLoading ? 'PROCESSING...' : 'IMPORT SCORE DATA' }}</span>
-      </button>
+        <div
+          class="dropzone"
+          :class="{ 'is-drag': dragActive, 'is-disabled': importing }"
+          role="button"
+          tabindex="0"
+          aria-label="选择或拖入 Excel 文件"
+          @click="triggerFilePicker"
+          @keydown.enter.prevent="triggerFilePicker"
+          @keydown.space.prevent="triggerFilePicker"
+          @dragenter.prevent="dragActive = !importing"
+          @dragover.prevent="dragActive = !importing"
+          @dragleave.prevent="dragActive = false"
+          @drop.prevent="handleDrop"
+        >
+          <PhUploadSimple size="26" weight="duotone" class="drop-icon" />
+          <p><strong>选择文件</strong> 或拖到这里</p>
+          <p class="hint">支持 .xlsx / .xls，单个文件不超过 10MB</p>
+        </div>
+        <input ref="fileInput" type="file" accept=".xlsx,.xls" hidden @change="handleFileChange" />
+
+        <div v-if="selectedFile" class="file-row">
+          <PhFileCsv size="18" weight="duotone" class="file-icon" />
+          <span class="file-name" :title="selectedFile.name">{{ selectedFile.name }}</span>
+          <span class="file-size">{{ fileSizeText }}</span>
+          <button class="file-remove" type="button" :disabled="importing" @click="removeFile">移除</button>
+        </div>
+
+        <p v-if="fileError" class="file-error">{{ fileError }}</p>
+
+        <div class="form-actions">
+          <el-button type="primary" :loading="importing" :disabled="importing" @click="handleImport">
+            导入
+          </el-button>
+          <span class="form-note">导入过程中请勿重复提交</span>
+        </div>
+
+        <div v-if="resultMessage" class="result-box" :class="resultType">
+          {{ resultMessage }}
+        </div>
+
+        <p class="form-hint">{{ activeHint }}</p>
+      </div>
     </div>
-  </div>
+  </section>
 </template>
 
 <style scoped>
-.scorecheck-page {
+.import-page {
+  max-width: 1400px;
+}
+
+.page-head {
+  margin-bottom: 20px;
+}
+
+.page-head h1 {
+  margin: 0 0 4px;
+  font-size: 26px;
+  line-height: 1.25;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.page-head p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.panel {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+.tabs {
   display: flex;
-  flex-direction: column;
-  gap: 20px;
+  gap: 4px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--color-border);
 }
 
-/* --- Header --- */
-.page-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 12px 0;
+.tab {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  padding: 12px 12px 10px;
+  font-size: 14px;
+  color: var(--color-text-secondary);
 }
 
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 0;
+.tab:hover:not(:disabled) {
+  color: var(--color-text);
 }
 
-.header-bracket {
-  font-size: 22px;
-  font-weight: 300;
-  color: var(--amber);
-  line-height: 1.2;
-}
-
-.header-title {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--text-primary);
-  letter-spacing: 0.1em;
-  line-height: 1.2;
-}
-
-.header-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-  padding-top: 6px;
-}
-
-.meta-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  background: var(--emerald);
-  animation: breathe 3s ease-in-out infinite;
-}
-
-.meta-text {
-  font-size: 11px;
-  color: var(--text-muted);
-  font-weight: 500;
-  letter-spacing: 0.08em;
-}
-
-/* --- Tab Bar --- */
-.tab-bar {
-  display: flex;
-  gap: 2px;
-  background: var(--border);
-  padding: 2px;
-}
-
-.tab-btn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 10px 20px;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  cursor: pointer;
-  transition: all var(--fast) var(--ease-out);
-}
-
-.tab-btn:hover {
-  color: var(--text-secondary);
-  background: var(--surface);
-}
-
-.tab-btn.active {
-  color: var(--amber);
-  background: var(--bg);
+.tab[aria-selected="true"] {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
   font-weight: 600;
 }
 
-/* --- Import Flow --- */
-.import-flow {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  max-width: 560px;
-  margin: 0 auto;
-  width: 100%;
+.tab:disabled {
+  cursor: not-allowed;
+  opacity: .6;
 }
 
-.step-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
+.form-panel {
   padding: 20px;
-  display: flex;
-  gap: 16px;
 }
 
-.step-marker {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--amber);
-  letter-spacing: 0.05em;
-  flex-shrink: 0;
-  padding-top: 2px;
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
 }
 
-.step-body {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+.dropzone {
+  margin-top: 4px;
+  padding: 28px 20px;
+  text-align: center;
+  cursor: pointer;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-panel);
+  background: #f8fafc;
+  transition: border-color .15s ease, background-color .15s ease;
 }
 
-.step-title {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text-primary);
-  letter-spacing: 0.05em;
+.dropzone:hover,
+.dropzone.is-drag {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
 }
 
-.step-desc {
-  font-size: 11px;
-  color: var(--text-muted);
-  letter-spacing: 0.03em;
-}
-
-.step-form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.step-form :deep(.el-form-item__label) {
-  font-size: 10px !important;
-  font-weight: 600 !important;
-  letter-spacing: 0.08em !important;
-  color: var(--text-muted) !important;
-}
-
-.step-form :deep(.el-input__wrapper) {
-  background: var(--bg-deep);
-  border-radius: 0;
-}
-
-/* --- Drop Zone --- */
-.drop-zone {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 24px;
-  border: 1px dashed var(--border-strong);
-  background: var(--bg-deep);
-  transition: all var(--fast) var(--ease-out);
-}
-
-.drop-active {
-  border-color: var(--amber);
-  background: var(--amber-bg);
+.dropzone.is-disabled {
+  cursor: not-allowed;
+  opacity: .6;
 }
 
 .drop-icon {
-  color: var(--amber);
+  color: var(--color-text-muted);
+  margin-bottom: 6px;
 }
 
-.drop-text {
+.dropzone p {
+  margin: 0;
+}
+
+.dropzone strong {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.dropzone .hint {
+  margin-top: 4px;
   font-size: 12px;
-  color: var(--text-secondary);
-  font-weight: 500;
-  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+}
+
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+
+.file-icon {
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
 }
 
 .file-name {
-  font-size: 12px;
-  color: var(--amber);
-  font-weight: 600;
-  background: var(--amber-bg);
-  padding: 4px 12px;
-}
-
-.file-prefix {
-  margin-right: 4px;
-  opacity: 0.6;
-}
-
-.drop-hint {
-  font-size: 10px;
-  color: var(--text-muted);
-  letter-spacing: 0.05em;
-}
-
-/* --- Submit Button --- */
-.submit-btn {
-  width: 100%;
-  height: 44px;
-  border: none;
-  border-radius: 0;
-  background: var(--amber);
-  color: var(--text-inverse);
-  font-family: 'IBM Plex Mono', monospace;
+  flex: 1;
+  min-width: 0;
   font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-size {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.file-remove {
+  border: 0;
+  background: none;
+  padding: 2px 4px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  border-radius: 4px;
+}
+
+.file-remove:hover:not(:disabled) {
+  background: var(--color-surface-muted);
+  color: var(--color-text);
+}
+
+.file-error {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--color-danger);
+}
+
+.form-actions {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 10px;
-  cursor: pointer;
-  transition: all var(--fast) var(--ease-out);
-  box-shadow: var(--shadow-amber);
-  max-width: 560px;
-  margin: 0 auto;
+  gap: 12px;
+  margin-top: 20px;
+  flex-wrap: wrap;
 }
 
-.submit-btn:hover:not(:disabled) {
-  background: var(--amber-dim);
-  box-shadow: 0 6px 24px rgba(240, 165, 0, 0.3);
-  transform: translateY(-1px);
+.form-note {
+  font-size: 12px;
+  color: var(--color-text-muted);
 }
 
-.submit-btn:active:not(:disabled) {
-  transform: translateY(0) scale(0.98);
+.form-hint {
+  margin: 14px 0 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
 }
 
-.submit-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.result-box {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: #f8fafc;
+  font-size: 13px;
 }
 
-/* --- Responsive --- */
-@media (max-width: 768px) {
-  .step-card {
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
+.result-box.success {
+  border-color: #b7e1c8;
+  background: #f3fbf6;
+  color: var(--color-success);
+}
+
+.result-box.warning {
+  border-color: #f0d9a8;
+  background: #fffaf0;
+  color: var(--color-warning);
+}
+
+.result-box.error {
+  border-color: #f3c1bd;
+  background: #fff6f5;
+  color: var(--color-danger);
+}
+
+@media (max-width: 767px) {
+  .page-head h1 {
+    font-size: 23px;
   }
 
-  .step-form {
-    width: 100%;
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .form-panel {
+    padding: 16px;
   }
 }
 </style>

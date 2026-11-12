@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import ElementPlus from 'element-plus'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import 'element-plus/dist/index.css'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 
@@ -15,32 +16,7 @@ for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
   app.component(key, component)
 }
 
-// Theme initialization
-function initTheme() {
-  const saved = localStorage.getItem('theme')
-  if (saved === 'dark') {
-    document.documentElement.setAttribute('data-theme', 'dark')
-  } else if (saved === 'light') {
-    document.documentElement.removeAttribute('data-theme')
-  } else {
-    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      document.documentElement.setAttribute('data-theme', 'dark')
-    }
-  }
-}
-initTheme()
-
-window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-  if (!localStorage.getItem('theme')) {
-    if (e.matches) {
-      document.documentElement.setAttribute('data-theme', 'dark')
-    } else {
-      document.documentElement.removeAttribute('data-theme')
-    }
-  }
-})
-
 app.use(pinia)
 app.use(router)
-app.use(ElementPlus)
+app.use(ElementPlus, { locale: zhCn })
 app.mount('#app')

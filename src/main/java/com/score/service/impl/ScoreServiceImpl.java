@@ -146,10 +146,11 @@ public class ScoreServiceImpl implements IScoreService {
     @Transactional(rollbackFor = Exception.class)
     @Override
     public ResultVo<?> importStudent(MultipartFile file, String className) {
-        // 校验文件类型
-        String contentType = file.getContentType();
-        if (contentType == null || !contentType.contains("excel")) {
-            return ResultVo.error("请上传Excel文件");
+        // 校验文件类型：浏览器对 .xlsx 上报的 MIME 是
+        // application/vnd.openxmlformats-officedocument.spreadsheetml.sheet，并不包含 "excel"，
+        // 因此以扩展名为准，MIME 仅作辅助判断。
+        if (!isExcelFile(file)) {
+            return ResultVo.error("请上传Excel文件（.xlsx/.xls）");
         }
 
         // 先将文件读入字节数组
@@ -182,6 +183,13 @@ public class ScoreServiceImpl implements IScoreService {
     @Transactional(rollbackFor = Exception.class)
     @Override
     public ResultVo<?> importScores(MultipartFile file, String examName, String className) {
+        if (!isExcelFile(file)) {
+            return ResultVo.error("请上传Excel文件（.xlsx/.xls）");
+        }
+        if (file.getSize() > 10 * 1024 * 1024) {
+            return ResultVo.error("文件大小不能超过10MB");
+        }
+
         // 先将文件读入字节数组，避免多次调用 getInputStream()（流只能读一次）
         byte[] fileBytes;
         try {
@@ -338,5 +346,26 @@ public class ScoreServiceImpl implements IScoreService {
            .eq(StringUtils.hasText(adminBo.getClassName()), Student::getClassName, adminBo.getClassName())
            .orderByDesc(Student::getCreateTime);
         return ResultVo.success(studentMapper.selectPage(page, lqw));
+    }
+
+    /**
+     * 判断上传文件是否为 Excel。
+     * 浏览器对 .xlsx 的 MIME 是 application/vnd.openxmlformats-officedocument.spreadsheetml.sheet，
+     * 不含 "excel"，所以以扩展名为准，MIME 仅作兜底。
+     */
+    private boolean isExcelFile(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            return false;
+        }
+        String fileName = file.getOriginalFilename();
+        if (fileName != null) {
+            String lower = fileName.toLowerCase(java.util.Locale.ROOT);
+            if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) {
+                return true;
+            }
+        }
+        String contentType = file.getContentType();
+        return contentType != null
+                && (contentType.contains("excel") || contentType.contains("spreadsheetml"));
     }
 }

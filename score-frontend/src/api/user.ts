@@ -26,5 +26,5 @@ export function updateUser(data: AdminUser): Promise<ApiResponse> {
  * 删除用户
  */
 export function deleteUser(userName: string): Promise<ApiResponse> {
-  return request.delete(`/scoreCheck/deleteUser/${userName}`)
+  return request.delete(`/scoreCheck/${encodeURIComponent(userName)}`)
 }

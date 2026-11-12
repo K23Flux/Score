@@ -35,8 +35,8 @@ const initCaptcha = async () => {
   }
 
   const captchaConfig = {
-    requestCaptchaDataUrl: '/captcha/genCaptcha',
-    validCaptchaUrl: '/captcha/check',
+    requestCaptchaDataUrl: '/score/api/captcha/genCaptcha',
+    validCaptchaUrl: '/score/api/captcha/check',
     bindEl: bindEl,
     validSuccess: (res: any, config: any, tac: any) => {
       console.log('captcha success', res)

@@ -28,7 +28,7 @@ request.interceptors.response.use(
         localStorage.removeItem('userName')
         localStorage.removeItem('className')
         ElMessage.warning('登录已过期，请重新登录')
-        setTimeout(() => router.push('/score/login'), 1500)
+        setTimeout(() => router.push('/login'), 1500)
       } else {
         ElMessage.error(res.msg || '请求失败')
       }
@@ -41,7 +41,13 @@ request.interceptors.response.use(
     let message = error.message
     if (message === 'Network Error') message = '网络连接异常'
     else if (message.includes('timeout')) message = '请求超时，请稍后重试'
-    else if (error.response?.status === 401) { localStorage.clear(); router.push('/score/login'); return Promise.reject(error) }
+    else if (error.response?.status === 401) {
+      localStorage.removeItem('satoken')
+      localStorage.removeItem('userName')
+      localStorage.removeItem('className')
+      router.push('/login')
+      return Promise.reject(error)
+    }
     ElMessage.error(message || '系统异常')
     return Promise.reject(error)
   }
