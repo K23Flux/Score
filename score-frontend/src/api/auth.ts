@@ -1,11 +1,18 @@
 import request from '@/utils/request'
-import type { ApiResponse, LoginParams, LoginPolicy } from '@/types'
+import type { ApiResponse, CurrentUser, LoginParams, LoginPolicy, LoginResult } from '@/types'
 
 /**
  * 教师登录
  */
-export function login(data: LoginParams): Promise<ApiResponse<{ token: string }>> {
+export function login(data: LoginParams): Promise<ApiResponse<LoginResult>> {
   return request.post('/scoreCheck/login', data)
+}
+
+/**
+ * 当前登录账号（角色以数据库为准）
+ */
+export function getMe(): Promise<ApiResponse<CurrentUser>> {
+  return request.get('/scoreCheck/me')
 }
 
 /**

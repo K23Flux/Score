@@ -17,6 +17,16 @@ function buildForm(
 
 const config = { headers: { 'Content-Type': 'multipart/form-data' } }
 
+interface TermFields {
+  academicYear?: string
+  semester?: string
+}
+
+function termFields(term?: TermFields): Record<string, string> {
+  if (!term?.academicYear || !term?.semester) return {}
+  return { academicYear: term.academicYear, semester: term.semester }
+}
+
 /**
  * 预览学生信息导入，返回列映射和逐行校验结果。
  */
@@ -24,8 +34,13 @@ export function previewStudentImport(
   file: File,
   className: string,
   mapping?: ImportMapping,
+  term?: TermFields,
 ): Promise<ApiResponse<ImportPreview>> {
-  return request.post('/scoreCheck/import/student/preview', buildForm(file, { className }, mapping), config)
+  return request.post(
+    '/scoreCheck/import/student/preview',
+    buildForm(file, { className, ...termFields(term) }, mapping),
+    config,
+  )
 }
 
 /**
@@ -36,10 +51,11 @@ export function previewScoreImport(
   examName: string,
   className: string,
   mapping?: ImportMapping,
+  term?: TermFields,
 ): Promise<ApiResponse<ImportPreview>> {
   return request.post(
     '/scoreCheck/import/score/preview',
-    buildForm(file, { examName, className }, mapping),
+    buildForm(file, { examName, className, ...termFields(term) }, mapping),
     config,
   )
 }
@@ -52,10 +68,11 @@ export function commitStudentImport(
   className: string,
   mapping: ImportMapping,
   ignoreErrors: boolean,
+  term?: TermFields,
 ): Promise<ApiResponse<ImportResult>> {
   return request.post(
     '/scoreCheck/import/student/commit',
-    buildForm(file, { className }, mapping, ignoreErrors),
+    buildForm(file, { className, ...termFields(term) }, mapping, ignoreErrors),
     config,
   )
 }
@@ -69,10 +86,11 @@ export function commitScoreImport(
   className: string,
   mapping: ImportMapping,
   ignoreErrors: boolean,
+  term?: TermFields,
 ): Promise<ApiResponse<ImportResult>> {
   return request.post(
     '/scoreCheck/import/score/commit',
-    buildForm(file, { examName, className }, mapping, ignoreErrors),
+    buildForm(file, { examName, className, ...termFields(term) }, mapping, ignoreErrors),
     config,
   )
 }

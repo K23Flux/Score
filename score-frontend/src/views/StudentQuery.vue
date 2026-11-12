@@ -1,12 +1,19 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import type { FormInstance, FormRules } from 'element-plus'
 import { PhCheckCircle, PhUser } from '@phosphor-icons/vue'
 import { studentQuery } from '@/api/score'
+import { useTermStore } from '@/stores/term'
 import type { Score } from '@/types'
 
 const router = useRouter()
+const termStore = useTermStore()
+
+const termValue = computed({
+  get: () => (termStore.selected ? termStore.termKey(termStore.selected) : ''),
+  set: (value: string) => termStore.selectByKey(value),
+})
 
 const formRef = ref<FormInstance>()
 const loading = ref(false)
@@ -64,6 +71,8 @@ const handleSearch = async () => {
     const res = await studentQuery({
       studentName: formData.studentName,
       idCard: formData.idCard,
+      academicYear: termStore.academicYear,
+      semester: termStore.semester,
     })
     scores.value = res.data?.score || []
     submittedName.value = formData.studentName
@@ -94,8 +103,21 @@ const resetSearch = () => {
 
 const goToLogin = () => router.push('/login')
 
-onMounted(() => {
+// 切换学期后旧结果不再适用
+watch(
+  () => termStore.selectedKey,
+  () => {
+    if (hasSearched.value) {
+      hasSearched.value = false
+      scores.value = []
+      submittedName.value = ''
+    }
+  },
+)
+
+onMounted(async () => {
   document.title = '学生成绩查询 · 成绩查询平台'
+  await termStore.load().catch(() => {})
 })
 </script>
 
@@ -112,6 +134,16 @@ onMounted(() => {
         <p class="page-desc">请输入姓名和身份证号查询成绩</p>
 
         <el-form ref="formRef" :model="formData" :rules="rules" label-position="top" @submit.prevent="handleSearch">
+          <el-form-item label="学年学期">
+            <el-select v-model="termValue" placeholder="选择学期" class="term-select">
+              <el-option
+                v-for="term in termStore.terms"
+                :key="term.id"
+                :label="term.name"
+                :value="termStore.termKey(term)"
+              />
+            </el-select>
+          </el-form-item>
           <el-form-item label="姓名" prop="studentName">
             <el-input
               v-model="formData.studentName"
@@ -163,7 +195,10 @@ onMounted(() => {
         <div class="result-head">
           <div>
             <h2>{{ submittedName }}</h2>
-            <p class="result-meta">{{ groupedScores.length }} 场考试，{{ subjectCount }} 条科目成绩</p>
+            <p class="result-meta">
+              <template v-if="termStore.termName">{{ termStore.termName }} · </template>
+              {{ groupedScores.length }} 场考试，{{ subjectCount }} 条科目成绩
+            </p>
           </div>
           <el-button @click="resetSearch">重新查询</el-button>
         </div>
@@ -238,6 +273,10 @@ h1 {
   margin: 0 0 24px;
   font-size: 13px;
   color: var(--color-text-muted);
+}
+
+.term-select {
+  width: 100%;
 }
 
 .query-submit {

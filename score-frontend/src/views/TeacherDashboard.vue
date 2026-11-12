@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { checkList } from '@/api/score'
+import { useTermStore } from '@/stores/term'
 import type { ScoreGroupItem } from '@/types'
+
+const termStore = useTermStore()
 
 const loading = ref(false)
 const errorMessage = ref('')
@@ -28,6 +31,8 @@ const loadData = async () => {
     const res = await checkList({
       studentName: searchForm.studentName.trim(),
       examName: searchForm.examName.trim(),
+      academicYear: termStore.academicYear,
+      semester: termStore.semester,
     })
     scores.value = res.data || []
   } catch {
@@ -46,8 +51,16 @@ const handleReset = () => {
   loadData()
 }
 
-onMounted(() => {
+watch(
+  () => termStore.selectedKey,
+  () => {
+    if (termStore.loaded) loadData()
+  },
+)
+
+onMounted(async () => {
   document.title = '成绩管理 · 成绩查询平台'
+  await termStore.load().catch(() => {})
   loadData()
 })
 </script>

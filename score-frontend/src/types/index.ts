@@ -23,6 +23,8 @@ export interface Student {
   studentName: string
   className: string
   idCard: string
+  academicYear?: string
+  semester?: string
   createTime?: string
   delFlag?: string
 }
@@ -35,6 +37,8 @@ export interface Score {
   studentName: string
   className: string
   idCard: string
+  academicYear?: string
+  semester?: string
   examName: string
   subject: string
   score: number
@@ -62,6 +66,7 @@ export interface AdminUser {
   userName: string
   password?: string
   className: string
+  role?: string
   createTime?: string
   delFlag?: string
 }
@@ -107,6 +112,8 @@ export interface StudentQueryResponse {
 export interface StudentQueryParams {
   studentName: string
   idCard: string
+  academicYear?: string
+  semester?: string
 }
 
 /**
@@ -115,6 +122,8 @@ export interface StudentQueryParams {
 export interface TeacherQueryParams {
   studentName?: string
   examName?: string
+  academicYear?: string
+  semester?: string
 }
 
 /**
@@ -124,6 +133,49 @@ export interface StudentListParams {
   className?: string
   pageNum?: number
   pageSize?: number
+  academicYear?: string
+  semester?: string
+}
+
+/**
+ * 学年学期
+ */
+export interface Term {
+  id: number
+  academicYear: string
+  semester: string
+  name: string
+  current: boolean
+}
+
+/**
+ * AI 表头识别设置（密钥只返回掩码）
+ */
+export interface AiSettingView {
+  enabled: boolean
+  baseUrl: string
+  model: string
+  apiKeySet: boolean
+  apiKeyMasked: string
+  ready: boolean
+}
+
+/**
+ * 登录结果
+ */
+export interface LoginResult {
+  token: string
+  role?: string
+  className?: string
+}
+
+/**
+ * 当前登录账号
+ */
+export interface CurrentUser {
+  userName: string
+  className: string
+  role: string
 }
 
 /**

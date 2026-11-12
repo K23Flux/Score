@@ -41,7 +41,10 @@ public class MybatisPlusConfig {
 
             @Override
             public boolean ignoreTable(String tableName) {
-                return "admin".equalsIgnoreCase(tableName);
+                // admin、系统设置和学期表不属于班级数据，不注入 class_name
+                return "admin".equalsIgnoreCase(tableName)
+                        || "app_setting".equalsIgnoreCase(tableName)
+                        || "academic_term".equalsIgnoreCase(tableName);
             }
         }));
 

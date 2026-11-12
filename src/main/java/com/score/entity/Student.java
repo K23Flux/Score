@@ -32,6 +32,13 @@ public class Student {
      * 身份证号
      */
     private String idCard;
+
+    /** 学年，例如 2026-2027 */
+    private String academicYear;
+
+    /** 学期：1=第一学期，2=第二学期 */
+    private String semester;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private Date createTime;
     /**

@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref, watch } from 'vue'
 import { getStudentList } from '@/api/student'
+import { useTermStore } from '@/stores/term'
 import type { Student } from '@/types'
+
+const termStore = useTermStore()
 
 const loading = ref(false)
 const errorMessage = ref('')
@@ -19,6 +22,8 @@ const loadData = async () => {
       className: searchForm.className.trim(),
       pageNum: pagination.pageNum,
       pageSize: pagination.pageSize,
+      academicYear: termStore.academicYear,
+      semester: termStore.semester,
     })
     studentList.value = res.data.records || []
     total.value = res.data.total || 0
@@ -53,8 +58,19 @@ const handleSizeChange = (size: number) => {
   loadData()
 }
 
-onMounted(() => {
+watch(
+  () => termStore.selectedKey,
+  () => {
+    if (termStore.loaded) {
+      pagination.pageNum = 1
+      loadData()
+    }
+  },
+)
+
+onMounted(async () => {
   document.title = '学生管理 · 成绩查询平台'
+  await termStore.load().catch(() => {})
   loadData()
 })
 </script>

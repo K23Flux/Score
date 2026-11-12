@@ -15,10 +15,13 @@ import com.score.entity.vo.ImportResultVo;
 import com.score.mapper.AdminMapper;
 import com.score.mapper.ScoreMapper;
 import com.score.mapper.StudentMapper;
+import com.score.service.AdminGuardService;
 import com.score.service.ExcelImportService;
 import com.score.service.IScoreService;
 import com.score.service.ImportType;
 import com.score.service.LoginGuardService;
+import com.score.service.TermInfo;
+import com.score.service.TermService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -53,6 +56,8 @@ public class ScoreServiceImpl implements IScoreService {
     private ExcelImportService excelImportService;
     @Autowired
     private LoginGuardService loginGuardService;
+    @Autowired
+    private TermService termService;
 
     @Override
     public ResultVo<?> queryScore(StudentQueryScoreBo bo) {
@@ -60,25 +65,31 @@ public class ScoreServiceImpl implements IScoreService {
             return ResultVo.error("查询失败：姓名不能为空");
         }
         // 校验身份证号格式已由 @Pattern 注解处理
+        TermInfo term = termService.resolve(bo.getAcademicYear(), bo.getSemester());
         //身份验证
-        if(studentMapper.checkStudent(bo.getStudentName(),bo.getIdCard())==0){
+        if(studentMapper.checkStudent(bo.getStudentName(),bo.getIdCard(),
+                term.academicYear(), term.semester())==0){
             return ResultVo.error("姓名或身份证号错误，请检查！");
         }
-        LambdaQueryWrapper<Score> lqw = buildScoreQueryWrapper(bo, true);
+        LambdaQueryWrapper<Score> lqw = buildScoreQueryWrapper(bo, true, term);
         List<Score> scores = scoreMapper.studentQuery(lqw);
         BigDecimal totalScore = scores.stream().map(s->s.getScore() !=null?s.getScore():BigDecimal.ZERO).reduce(BigDecimal.ZERO, BigDecimal::add);
         Map<String,Object> result=new HashMap<>();
         result.put("score",scores);
         result.put("totalScore",totalScore);
         result.put("subjectCount",scores.size());
+        result.put("academicYear", term.academicYear());
+        result.put("semester", term.semester());
+        result.put("termName", TermService.displayName(term.academicYear(), term.semester()));
         return ResultVo.success(result);
     }
 
     @Override
     public ResultVo<?> checkList(StudentQueryScoreBo bo) {
         // 多租户隔离由拦截器自动注入上下文，插件自动拦截
-
-        LambdaQueryWrapper<Score> lqw =buildScoreQueryWrapper(bo, false);
+        TermInfo term = termService.resolve(bo == null ? null : bo.getAcademicYear(),
+                bo == null ? null : bo.getSemester());
+        LambdaQueryWrapper<Score> lqw =buildScoreQueryWrapper(bo, false, term);
         List<Score> rawList = scoreMapper.selectList(lqw);
         Map<String,Map<String,Object>> groupMap =new LinkedHashMap<>();
         for(Score s:rawList){
@@ -146,23 +157,26 @@ public class ScoreServiceImpl implements IScoreService {
         StpUtil.login(admin.getUserName());
         StpUtil.getSession().set("className", admin.getClassName());
         StpUtil.getSession().set("userName",admin.getUserName());
+        StpUtil.getSession().set("role", AdminGuardService.roleOf(admin));
         String token = StpUtil.getTokenValue();
         Map<String,Object>result=new HashMap<>();
         result.put("token",token);
+        result.put("role", AdminGuardService.roleOf(admin));
+        result.put("className", admin.getClassName());
         return ResultVo.success(result);
     }
 
     @Override
     public ResultVo<?> importStudent(MultipartFile file, String className) {
         ImportResultVo result = excelImportService.commit(
-                file, ImportType.STUDENT, className, null, null, false);
+                file, ImportType.STUDENT, className, null, null, false, termService.current());
         return ResultVo.success(result.getMessage());
     }
 
     @Override
     public ResultVo<?> importScores(MultipartFile file, String examName, String className) {
         ImportResultVo result = excelImportService.commit(
-                file, ImportType.SCORE, className, examName, null, false);
+                file, ImportType.SCORE, className, examName, null, false, termService.current());
         return ResultVo.success(result.getMessage());
     }
 
@@ -172,15 +186,27 @@ public class ScoreServiceImpl implements IScoreService {
             return ResultVo.error("创建失败：用户名或密码或班级不能为空！");
         }
         LambdaQueryWrapper<Admin> lqw = new LambdaQueryWrapper<>();
-        lqw.eq(Admin::getUserName, bo.getUserName()).eq(Admin::getDelFlag, "0");
-        if(adminMapper.selectCount(lqw) > 0){
-            return ResultVo.error("创建失败：用户名：【"+bo.getUserName()+"】，已存在！");
+        lqw.eq(Admin::getUserName, bo.getUserName()).last("limit 1");
+        Admin existing = adminMapper.selectOne(lqw);
+        String hashPw = BCrypt.hashpw(bo.getPassword(), BCrypt.gensalt());
+        if (existing != null) {
+            if ("0".equals(existing.getDelFlag())) {
+                return ResultVo.error("创建失败：用户名：【"+bo.getUserName()+"】，已存在！");
+            }
+            // 用户名唯一索引也覆盖已删除账号，这里直接复用并重置
+            existing.setPassword(hashPw);
+            existing.setClassName(bo.getClassName());
+            existing.setRole(AdminGuardService.ROLE_TEACHER);
+            existing.setCreateTime(new Date());
+            existing.setDelFlag("0");
+            int rows = adminMapper.updateById(existing);
+            return rows > 0 ? ResultVo.success("创建成功！") : ResultVo.error("创建失败");
         }
         Admin admin = new Admin();
         admin.setUserName(bo.getUserName());
-        String hashPw = BCrypt.hashpw(bo.getPassword(), BCrypt.gensalt());
         admin.setPassword(hashPw);
         admin.setClassName(bo.getClassName());
+        admin.setRole(AdminGuardService.ROLE_TEACHER);
         admin.setCreateTime(new Date());
         admin.setDelFlag("0");
         int rows = adminMapper.insert(admin);
@@ -245,8 +271,10 @@ public class ScoreServiceImpl implements IScoreService {
     }
 
 
-    private LambdaQueryWrapper<Score> buildScoreQueryWrapper(StudentQueryScoreBo bo, boolean isExact) {
+    private LambdaQueryWrapper<Score> buildScoreQueryWrapper(StudentQueryScoreBo bo, boolean isExact, TermInfo term) {
         LambdaQueryWrapper<Score> lqw = new LambdaQueryWrapper<>();
+        lqw.eq(Score::getAcademicYear, term.academicYear())
+                .eq(Score::getSemester, term.semester());
         if (bo != null) {
             // 注意：className 的过滤现在由多租户插件自动完成，无需手动拼接
             if (isExact) {
@@ -263,13 +291,20 @@ public class ScoreServiceImpl implements IScoreService {
 
     @Override
     public ResultVo<?> getStudent(AdminBo adminBo, Integer pageNum, Integer pageSize){
+        TermInfo term = termService.resolve(
+                adminBo == null ? null : adminBo.getAcademicYear(),
+                adminBo == null ? null : adminBo.getSemester());
         // 从 session 获取当前教师的班级（多租户隔离）
         String className = (String) StpUtil.getSession().get("className");
+        String filterClass = adminBo == null ? null : adminBo.getClassName();
 
         Page<Student> page = new Page<>(pageNum, pageSize);
         LambdaQueryWrapper<Student> lqw = new LambdaQueryWrapper<>();
         lqw.eq(StringUtils.hasText(className), Student::getClassName, className)
-           .eq(StringUtils.hasText(adminBo.getClassName()), Student::getClassName, adminBo.getClassName())
+           .eq(StringUtils.hasText(filterClass), Student::getClassName, filterClass)
+           .eq(Student::getAcademicYear, term.academicYear())
+           .eq(Student::getSemester, term.semester())
+           .eq(Student::getDelFlag, "0")
            .orderByDesc(Student::getCreateTime);
         return ResultVo.success(studentMapper.selectPage(page, lqw));
     }

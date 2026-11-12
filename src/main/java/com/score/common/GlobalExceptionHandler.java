@@ -24,6 +24,13 @@ public class GlobalExceptionHandler {
         return ResultVo.error(msg);
     }
 
+    //仅管理员可用的功能
+    @ExceptionHandler(NotAdminException.class)
+    public ResultVo<?> handleNotAdminException(NotAdminException e) {
+        log.warn("权限校验失败：{}", e.getMessage());
+        return ResultVo.error(403, e.getMessage());
+    }
+
     //导入校验等可预期的业务错误，直接返回给页面
     @ExceptionHandler(IllegalArgumentException.class)
     public ResultVo<?> handleIllegalArgumentException(IllegalArgumentException e) {

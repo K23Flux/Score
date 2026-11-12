@@ -71,7 +71,7 @@ public class ExcelImportService {
     private AiColumnMapper aiColumnMapper;
 
     public ImportPreviewVo preview(MultipartFile file, ImportType type, String className,
-                                   String examName, ImportMappingVo requestedMapping) {
+                                   String examName, ImportMappingVo requestedMapping, TermInfo term) {
         className = trim(className);
         examName = trim(examName);
         if (!StringUtils.hasText(className)) {
@@ -114,7 +114,7 @@ public class ExcelImportService {
             return vo;
         }
 
-        ValidationOutcome outcome = validateRows(sheet, mapping, type, className);
+        ValidationOutcome outcome = validateRows(sheet, mapping, type, className, term);
         vo.setTotalRows(outcome.totalRows);
         vo.setValidRows(outcome.validRows);
         vo.setInvalidRows(outcome.invalidRows);
@@ -135,7 +135,8 @@ public class ExcelImportService {
 
     @Transactional(rollbackFor = Exception.class)
     public ImportResultVo commit(MultipartFile file, ImportType type, String className,
-                                 String examName, ImportMappingVo requestedMapping, boolean ignoreErrors) {
+                                 String examName, ImportMappingVo requestedMapping, boolean ignoreErrors,
+                                 TermInfo term) {
         className = trim(className);
         examName = trim(examName);
         if (!StringUtils.hasText(className)) {
@@ -154,7 +155,7 @@ public class ExcelImportService {
             throw new IllegalArgumentException(String.join("；", headerErrors));
         }
 
-        ValidationOutcome outcome = validateRows(sheet, mapping, type, className);
+        ValidationOutcome outcome = validateRows(sheet, mapping, type, className, term);
         if (outcome.invalidRows > 0 && !ignoreErrors) {
             throw new IllegalArgumentException("有 " + outcome.invalidRows
                     + " 行存在问题，未导入。请修正后重试，或选择只导入有效行。");
@@ -167,10 +168,12 @@ public class ExcelImportService {
                 if (!row.valid) {
                     continue;
                 }
-                Student existing = findByStudentIdCard(row.idCard);
+                Student existing = findByStudentIdCard(row.idCard, term);
                 if (existing != null) {
                     existing.setStudentName(row.studentName);
                     existing.setClassName(className);
+                    existing.setAcademicYear(term.academicYear());
+                    existing.setSemester(term.semester());
                     existing.setDelFlag("0");
                     studentMapper.updateById(existing);
                     updated++;
@@ -179,6 +182,8 @@ public class ExcelImportService {
                     student.setStudentName(row.studentName);
                     student.setIdCard(row.idCard);
                     student.setClassName(className);
+                    student.setAcademicYear(term.academicYear());
+                    student.setSemester(term.semester());
                     student.setDelFlag("0");
                     student.setCreateTime(new Date());
                     studentMapper.insert(student);
@@ -191,10 +196,12 @@ public class ExcelImportService {
                     continue;
                 }
                 for (Map.Entry<String, BigDecimal> entry : row.scores.entrySet()) {
-                    Score existing = findScore(examName, className, row.idCard, entry.getKey());
+                    Score existing = findScore(examName, className, row.idCard, entry.getKey(), term);
                     if (existing != null) {
                         existing.setStudentName(row.studentName);
                         existing.setScore(entry.getValue());
+                        existing.setAcademicYear(term.academicYear());
+                        existing.setSemester(term.semester());
                         existing.setCreateTime(new Date());
                         scoreMapper.updateById(existing);
                         updated++;
@@ -203,6 +210,8 @@ public class ExcelImportService {
                         score.setStudentName(row.studentName);
                         score.setIdCard(row.idCard);
                         score.setClassName(className);
+                        score.setAcademicYear(term.academicYear());
+                        score.setSemester(term.semester());
                         score.setExamName(examName);
                         score.setSubject(entry.getKey());
                         score.setScore(entry.getValue());
@@ -407,12 +416,12 @@ public class ExcelImportService {
     }
 
     private ValidationOutcome validateRows(SheetData sheet, ImportMappingVo mapping,
-                                           ImportType type, String className) {
+                                           ImportType type, String className, TermInfo term) {
         ValidationOutcome outcome = new ValidationOutcome();
         Map<String, Student> studentsById = new HashMap<>();
         Map<String, List<Student>> studentsByName = new HashMap<>();
         if (type == ImportType.SCORE) {
-            loadStudents(className, studentsById, studentsByName);
+            loadStudents(className, term, studentsById, studentsByName);
         }
 
         Set<String> seenIds = new HashSet<>();
@@ -530,10 +539,13 @@ public class ExcelImportService {
         return matches.get(0);
     }
 
-    private void loadStudents(String className, Map<String, Student> byId,
+    private void loadStudents(String className, TermInfo term, Map<String, Student> byId,
                               Map<String, List<Student>> byName) {
         LambdaQueryWrapper<Student> query = new LambdaQueryWrapper<>();
-        query.eq(Student::getClassName, className).eq(Student::getDelFlag, "0");
+        query.eq(Student::getClassName, className)
+                .eq(Student::getAcademicYear, term.academicYear())
+                .eq(Student::getSemester, term.semester())
+                .eq(Student::getDelFlag, "0");
         List<Student> students = studentMapper.selectList(query);
         for (Student student : students) {
             byId.put(student.getIdCard(), student);
@@ -541,19 +553,24 @@ public class ExcelImportService {
         }
     }
 
-    private Student findByStudentIdCard(String idCard) {
+    private Student findByStudentIdCard(String idCard, TermInfo term) {
         LambdaQueryWrapper<Student> query = new LambdaQueryWrapper<>();
-        query.eq(Student::getIdCard, idCard).eq(Student::getDelFlag, "0");
+        query.eq(Student::getIdCard, idCard)
+                .eq(Student::getAcademicYear, term.academicYear())
+                .eq(Student::getSemester, term.semester())
+                .eq(Student::getDelFlag, "0");
         List<Student> students = studentMapper.selectList(query);
         return students.isEmpty() ? null : students.get(0);
     }
 
-    private Score findScore(String examName, String className, String idCard, String subject) {
+    private Score findScore(String examName, String className, String idCard, String subject, TermInfo term) {
         LambdaQueryWrapper<Score> query = new LambdaQueryWrapper<>();
         query.eq(Score::getExamName, examName)
                 .eq(Score::getClassName, className)
                 .eq(Score::getIdCard, idCard)
                 .eq(Score::getSubject, subject)
+                .eq(Score::getAcademicYear, term.academicYear())
+                .eq(Score::getSemester, term.semester())
                 .eq(Score::getDelFlag, "0");
         List<Score> scores = scoreMapper.selectList(query);
         if (scores.size() > 1) {

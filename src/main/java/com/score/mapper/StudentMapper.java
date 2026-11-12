@@ -14,6 +14,10 @@ import org.apache.ibatis.annotations.Select;
 @Mapper
 public interface StudentMapper extends BaseMapper<Student> {
     @InterceptorIgnore(tenantLine = "true")
-    @Select("SELECT COUNT(*) FROM student where student_name=#{studentName} AND id_card=#{idCard} AND del_flag='0'")
-    Integer checkStudent(@Param("studentName") String studentName,@Param("idCard") String idCard);
+    @Select("SELECT COUNT(*) FROM student where student_name=#{studentName} AND id_card=#{idCard} " +
+            "AND academic_year=#{academicYear} AND semester=#{semester} AND del_flag='0'")
+    Integer checkStudent(@Param("studentName") String studentName,
+                         @Param("idCard") String idCard,
+                         @Param("academicYear") String academicYear,
+                         @Param("semester") String semester);
 }

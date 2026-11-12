@@ -29,6 +29,9 @@ public class Admin {
     private String password;
     private String className;
 
+    /** 角色：admin=管理员，teacher=教师 */
+    private String role;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private Date createTime;
     private String delFlag;

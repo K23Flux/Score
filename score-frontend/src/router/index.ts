@@ -51,6 +51,12 @@ const routes: RouteRecordRaw[] = [
         name: 'StudentManagement',
         component: () => import('@/views/StudentManagement.vue'),
         meta: { title: '学生管理' }
+      },
+      {
+        path: 'settings',
+        name: 'Settings',
+        component: () => import('@/views/SettingsView.vue'),
+        meta: { title: '设置', requiresAdmin: true }
       }
     ]
   }
@@ -66,9 +72,12 @@ const router = createRouter({
 router.beforeEach((to, _from, next) => {
   const authStore = useAuthStore()
   const requiresAuth = to.matched.some(record => record.meta.requiresAuth)
+  const requiresAdmin = to.matched.some(record => record.meta.requiresAdmin)
 
   if (requiresAuth && !authStore.isLoggedIn) {
     next('/login')
+  } else if (requiresAdmin && !authStore.isAdmin) {
+    next('/teacher/dashboard')
   } else if (to.path === '/login' && authStore.isLoggedIn) {
     next('/teacher/dashboard')
   } else {

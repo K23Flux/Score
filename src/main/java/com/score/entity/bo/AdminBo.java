@@ -21,5 +21,9 @@ public class AdminBo {
     @JsonProperty("className")
     private String className;
 
+    /** 查询用的学年学期；为空时使用当前学期 */
+    private String academicYear;
+    private String semester;
+
     private String captchaId;
 }

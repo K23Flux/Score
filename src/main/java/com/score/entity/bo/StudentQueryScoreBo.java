@@ -18,6 +18,12 @@ public class StudentQueryScoreBo {
     private String className;
     private String examName;
 
+    /** 学年，例如 2026-2027；为空时使用当前学期 */
+    private String academicYear;
+
+    /** 学期：1=第一学期，2=第二学期 */
+    private String semester;
+
     /**
      * 恢复驼峰命名
      */

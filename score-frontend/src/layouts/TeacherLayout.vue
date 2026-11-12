@@ -4,17 +4,21 @@ import type { Component } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
+  PhGear,
   PhList,
   PhSquaresFour,
   PhUploadSimple,
   PhUserCircle,
   PhUsers,
 } from '@phosphor-icons/vue'
+import { getMe } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
+import { useTermStore } from '@/stores/term'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+const termStore = useTermStore()
 
 const mobileMenuOpen = ref(false)
 const menuButton = ref<HTMLButtonElement | null>(null)
@@ -26,15 +30,26 @@ interface MenuItem {
   icon: Component
 }
 
-const menuItems: MenuItem[] = [
-  { path: '/teacher/dashboard', name: '成绩管理', icon: PhSquaresFour },
-  { path: '/teacher/student-management', name: '学生管理', icon: PhUserCircle },
-  { path: '/teacher/import-data', name: '数据导入', icon: PhUploadSimple },
-  { path: '/teacher/user-management', name: '用户管理', icon: PhUsers },
-]
+const menuItems = computed<MenuItem[]>(() => {
+  const items: MenuItem[] = [
+    { path: '/teacher/dashboard', name: '成绩管理', icon: PhSquaresFour },
+    { path: '/teacher/student-management', name: '学生管理', icon: PhUserCircle },
+    { path: '/teacher/import-data', name: '数据导入', icon: PhUploadSimple },
+    { path: '/teacher/user-management', name: '用户管理', icon: PhUsers },
+  ]
+  if (authStore.isAdmin) {
+    items.push({ path: '/teacher/settings', name: '设置', icon: PhGear })
+  }
+  return items
+})
+
+const termValue = computed({
+  get: () => (termStore.selected ? termStore.termKey(termStore.selected) : ''),
+  set: (value: string) => termStore.selectByKey(value),
+})
 
 const activeTitle = computed(() => {
-  const item = menuItems.find((entry) => entry.path === route.path)
+  const item = menuItems.value.find((entry) => entry.path === route.path)
   return item?.name || '教师端'
 })
 
@@ -82,6 +97,15 @@ function handleResize() {
 onMounted(() => {
   document.addEventListener('keydown', handleKeydown)
   window.addEventListener('resize', handleResize)
+  termStore.load().catch(() => {})
+  // 角色以数据库为准，刷新页面后同步一次
+  getMe()
+    .then((res) => {
+      if (res.data) {
+        authStore.setUserInfo(res.data.userName, res.data.className, res.data.role)
+      }
+    })
+    .catch(() => {})
 })
 
 onBeforeUnmount(() => {
@@ -96,6 +120,24 @@ onBeforeUnmount(() => {
       <div class="sidebar-brand">
         <strong>成绩查询平台</strong>
         <span>Score · 教师端</span>
+      </div>
+
+      <div class="side-term">
+        <label for="term-select">学年学期</label>
+        <el-select
+          id="term-select"
+          v-model="termValue"
+          size="small"
+          class="term-select"
+          placeholder="选择学期"
+        >
+          <el-option
+            v-for="term in termStore.terms"
+            :key="term.id"
+            :label="term.name"
+            :value="termStore.termKey(term)"
+          />
+        </el-select>
       </div>
 
       <nav class="side-nav">
@@ -173,6 +215,22 @@ onBeforeUnmount(() => {
   font-size: 15px;
   font-weight: 600;
   color: var(--color-text);
+}
+
+.side-term {
+  padding: 0 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.side-term label {
+  font-size: 11px;
+  color: var(--color-text-secondary, #6b7280);
+}
+
+.term-select {
+  width: 100%;
 }
 
 .sidebar-brand span {

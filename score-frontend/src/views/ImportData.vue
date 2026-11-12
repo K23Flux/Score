@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { PhFileCsv, PhUploadSimple } from '@phosphor-icons/vue'
@@ -10,11 +10,17 @@ import {
   previewStudentImport,
 } from '@/api/import'
 import { useAuthStore } from '@/stores/auth'
+import { useTermStore } from '@/stores/term'
 import type { ImportMapping, ImportPreview } from '@/types'
 
 type ImportTab = 'student' | 'score'
 
 const authStore = useAuthStore()
+const termStore = useTermStore()
+const currentTerm = computed(() => ({
+  academicYear: termStore.academicYear,
+  semester: termStore.semester,
+}))
 
 const activeTab = ref<ImportTab>('student')
 const studentFormRef = ref<FormInstance>()
@@ -187,8 +193,8 @@ const fetchPreview = async (withMapping: boolean) => {
   try {
     const className = activeClassName()
     const res = activeTab.value === 'student'
-      ? await previewStudentImport(file, className, withMapping ? mappingPayload() : undefined)
-      : await previewScoreImport(file, scoreForm.examName, className, withMapping ? mappingPayload() : undefined)
+      ? await previewStudentImport(file, className, withMapping ? mappingPayload() : undefined, currentTerm.value)
+      : await previewScoreImport(file, scoreForm.examName, className, withMapping ? mappingPayload() : undefined, currentTerm.value)
     if (seq !== previewSeq) return
     preview.value = res.data
     Object.assign(mapping, res.data.mapping)
@@ -249,8 +255,8 @@ const confirmImport = async () => {
     const file = selectedFile.value
     const className = activeClassName()
     const res = activeTab.value === 'student'
-      ? await commitStudentImport(file, className, mappingPayload(), ignoreErrors)
-      : await commitScoreImport(file, scoreForm.examName, className, mappingPayload(), ignoreErrors)
+      ? await commitStudentImport(file, className, mappingPayload(), ignoreErrors, currentTerm.value)
+      : await commitScoreImport(file, scoreForm.examName, className, mappingPayload(), ignoreErrors, currentTerm.value)
     const message = res.data?.message || '导入完成'
     resetPreview()
     resultMessage.value = message
@@ -269,8 +275,17 @@ const formatSubjects = (subjects: Record<string, string>) => {
   return entries.length ? entries.map(([subject, value]) => `${subject} ${value}`).join('；') : '—'
 }
 
-onMounted(() => {
+watch(
+  () => termStore.selectedKey,
+  () => {
+    // 切换学期后旧文件的解析结果不再适用
+    if (preview.value || selectedFile.value) resetPreview()
+  },
+)
+
+onMounted(async () => {
   document.title = '数据导入 · 成绩查询平台'
+  await termStore.load().catch(() => {})
 })
 </script>
 
@@ -281,6 +296,7 @@ onMounted(() => {
         <h1>数据导入</h1>
         <p>先导入学生信息，再导入考试成绩</p>
       </div>
+      <el-tag v-if="termStore.termName" effect="plain">导入到 {{ termStore.termName }}</el-tag>
     </header>
 
     <div class="panel">

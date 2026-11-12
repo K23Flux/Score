@@ -57,7 +57,11 @@ const handleLogin = async () => {
     const token = res.data?.token
     if (token) {
       authStore.setToken(token)
-      authStore.setUserInfo(formData.userName.trim(), '')
+      authStore.setUserInfo(
+        formData.userName.trim(),
+        res.data?.className || '',
+        res.data?.role || 'teacher',
+      )
       ElMessage.success('登录成功')
       router.push('/teacher/dashboard')
     }

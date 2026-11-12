@@ -31,28 +31,18 @@ import java.util.Optional;
 @Service
 public class AiColumnMapper {
 
-    @Value("${score.ai.enabled:false}")
-    private boolean enabled;
-
-    @Value("${score.ai.base-url:}")
-    private String baseUrl;
-
-    @Value("${score.ai.api-key:}")
-    private String apiKey;
-
-    @Value("${score.ai.model:}")
-    private String model;
-
     @Value("${score.ai.timeout-seconds:8}")
     private int timeoutSeconds;
 
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private SettingsService settingsService;
+
+    /** 每次按数据库设置判断，管理页修改后立即生效。 */
     public boolean isEnabled() {
-        return enabled
-                && StringUtils.hasText(baseUrl)
-                && StringUtils.hasText(model);
+        return settingsService.isAiReady();
     }
 
     /**
@@ -73,8 +63,9 @@ public class AiColumnMapper {
     }
 
     private String call(ImportType type, List<String> headers, List<List<String>> samples) throws Exception {
+        AiSettings ai = settingsService.ai();
         ObjectNode body = objectMapper.createObjectNode();
-        body.put("model", model);
+        body.put("model", ai.model());
         body.put("temperature", 0);
 
         ArrayNode messages = body.putArray("messages");
@@ -86,12 +77,12 @@ public class AiColumnMapper {
         user.put("role", "user");
         user.put("content", buildPrompt(type, headers, samples));
 
-        String url = baseUrl.replaceAll("/+$", "") + "/chat/completions";
+        String url = ai.baseUrl().replaceAll("/+$", "") + "/chat/completions";
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
                 .timeout(Duration.ofSeconds(Math.max(2, timeoutSeconds)))
                 .header("Content-Type", "application/json");
-        if (StringUtils.hasText(apiKey)) {
-            builder.header("Authorization", "Bearer " + apiKey);
+        if (StringUtils.hasText(ai.apiKey())) {
+            builder.header("Authorization", "Bearer " + ai.apiKey());
         }
         HttpRequest request = builder
                 .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body), StandardCharsets.UTF_8))

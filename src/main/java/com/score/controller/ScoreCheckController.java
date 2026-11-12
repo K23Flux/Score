@@ -4,13 +4,17 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.score.common.ClientIpResolver;
 import com.score.common.ResultVo;
+import com.score.entity.Admin;
 import com.score.entity.bo.AdminBo;
 import com.score.entity.bo.StudentQueryScoreBo;
 import com.score.entity.vo.ImportMappingVo;
+import com.score.service.AdminGuardService;
 import com.score.service.ExcelImportService;
 import com.score.service.IScoreService;
 import com.score.service.ImportType;
 import com.score.service.LoginGuardService;
+import com.score.service.TermInfo;
+import com.score.service.TermService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
@@ -34,7 +38,28 @@ public class ScoreCheckController {
     @Autowired
     private LoginGuardService loginGuardService;
     @Autowired
+    private TermService termService;
+    @Autowired
+    private AdminGuardService adminGuardService;
+    @Autowired
     private ObjectMapper objectMapper;
+
+    /** 当前登录账号信息（角色以数据库为准）。 */
+    @GetMapping("/me")
+    public ResultVo<?> me() {
+        Admin admin = adminGuardService.currentUser();
+        Map<String, Object> data = new HashMap<>();
+        data.put("userName", admin.getUserName());
+        data.put("className", admin.getClassName());
+        data.put("role", AdminGuardService.roleOf(admin));
+        return ResultVo.success(data);
+    }
+
+    /** 学期列表：学生查分页和教师端都需要，无需登录。 */
+    @GetMapping("/terms")
+    public ResultVo<?> terms() {
+        return ResultVo.success(termService.listView());
+    }
 
     @PostMapping("/StudentCheck")
     public ResultVo<?> studentQuery(@Valid @RequestBody StudentQueryScoreBo bo) {
@@ -82,47 +107,62 @@ public class ScoreCheckController {
     @PostMapping("/import/student/preview")
     public ResultVo<?> previewStudent(@RequestParam("file") MultipartFile file,
                                       @RequestParam("className") String className,
+                                      @RequestParam(value = "academicYear", required = false) String academicYear,
+                                      @RequestParam(value = "semester", required = false) String semester,
                                       @RequestParam(value = "mapping", required = false) String mappingJson) {
         requireText(className, "请填写班级");
-        log.info("预览学生导入：{}", className);
+        TermInfo term = termService.resolve(academicYear, semester);
+        log.info("预览学生导入：{}|{}", className, TermService.displayName(term.academicYear(), term.semester()));
         return ResultVo.success(excelImportService.preview(
-                file, ImportType.STUDENT, className, null, parseMapping(mappingJson)));
+                file, ImportType.STUDENT, className, null, parseMapping(mappingJson), term));
     }
 
     @PostMapping("/import/score/preview")
     public ResultVo<?> previewScore(@RequestParam("file") MultipartFile file,
                                     @RequestParam("examName") String examName,
                                     @RequestParam("className") String className,
+                                    @RequestParam(value = "academicYear", required = false) String academicYear,
+                                    @RequestParam(value = "semester", required = false) String semester,
                                     @RequestParam(value = "mapping", required = false) String mappingJson) {
         requireText(examName, "请填写考试名称");
         requireText(className, "请填写班级");
-        log.info("预览成绩导入：{}|{}", examName, className);
+        TermInfo term = termService.resolve(academicYear, semester);
+        log.info("预览成绩导入：{}|{}|{}", examName, className,
+                TermService.displayName(term.academicYear(), term.semester()));
         return ResultVo.success(excelImportService.preview(
-                file, ImportType.SCORE, className, examName, parseMapping(mappingJson)));
+                file, ImportType.SCORE, className, examName, parseMapping(mappingJson), term));
     }
 
     @PostMapping("/import/student/commit")
     public ResultVo<?> commitStudent(@RequestParam("file") MultipartFile file,
                                      @RequestParam("className") String className,
+                                     @RequestParam(value = "academicYear", required = false) String academicYear,
+                                     @RequestParam(value = "semester", required = false) String semester,
                                      @RequestParam(value = "mapping", required = false) String mappingJson,
                                      @RequestParam(value = "ignoreErrors", defaultValue = "false") boolean ignoreErrors) {
         requireText(className, "请填写班级");
-        log.info("提交学生导入：{}|忽略问题行={}", className, ignoreErrors);
+        TermInfo term = termService.resolve(academicYear, semester);
+        log.info("提交学生导入：{}|{}|忽略问题行={}", className,
+                TermService.displayName(term.academicYear(), term.semester()), ignoreErrors);
         return ResultVo.success(excelImportService.commit(
-                file, ImportType.STUDENT, className, null, parseMapping(mappingJson), ignoreErrors));
+                file, ImportType.STUDENT, className, null, parseMapping(mappingJson), ignoreErrors, term));
     }
 
     @PostMapping("/import/score/commit")
     public ResultVo<?> commitScore(@RequestParam("file") MultipartFile file,
                                    @RequestParam("examName") String examName,
                                    @RequestParam("className") String className,
+                                   @RequestParam(value = "academicYear", required = false) String academicYear,
+                                   @RequestParam(value = "semester", required = false) String semester,
                                    @RequestParam(value = "mapping", required = false) String mappingJson,
                                    @RequestParam(value = "ignoreErrors", defaultValue = "false") boolean ignoreErrors) {
         requireText(examName, "请填写考试名称");
         requireText(className, "请填写班级");
-        log.info("提交成绩导入：{}|{}|忽略问题行={}", examName, className, ignoreErrors);
+        TermInfo term = termService.resolve(academicYear, semester);
+        log.info("提交成绩导入：{}|{}|{}|忽略问题行={}", examName, className,
+                TermService.displayName(term.academicYear(), term.semester()), ignoreErrors);
         return ResultVo.success(excelImportService.commit(
-                file, ImportType.SCORE, className, examName, parseMapping(mappingJson), ignoreErrors));
+                file, ImportType.SCORE, className, examName, parseMapping(mappingJson), ignoreErrors, term));
     }
 
     private ImportMappingVo parseMapping(String mappingJson) {
