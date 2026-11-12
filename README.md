@@ -4,6 +4,21 @@
 
 > **分支说明**：默认分支 `master` 即当前开发与部署版本（中文亮色界面、设置页、学年学期）。`feat/chinese-light-theme` 已合并到 master，保留为历史指针。
 
+## 界面预览
+
+<p align="center">
+  <img src="screenshots/student-query.png" width="600" alt="学生成绩查询" />
+  <img src="screenshots/login.png" width="600" alt="教师登录" />
+</p>
+<p align="center">
+  <img src="screenshots/teacher-dashboard.png" width="600" alt="成绩管理" />
+  <img src="screenshots/import-data.png" width="600" alt="数据导入" />
+</p>
+<p align="center">
+  <img src="screenshots/student-management.png" width="600" alt="学生管理" />
+  <img src="screenshots/settings.png" width="600" alt="管理员设置" />
+</p>
+
 ## 功能概览
 
 | 角色 | 功能 |
