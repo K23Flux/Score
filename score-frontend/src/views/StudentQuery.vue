@@ -68,9 +68,16 @@ const handleSearch = async () => {
     scores.value = res.data?.score || []
     submittedName.value = formData.studentName
     hasSearched.value = true
-  } catch {
+  } catch (error) {
     scores.value = []
-    errorMessage.value = '成绩查询失败，请稍后重试。'
+    const message = error instanceof Error ? error.message : ''
+    // 后端用业务错误表示“姓名或身份证号不匹配”，应展示为空结果而不是系统故障
+    if (message.includes('姓名或身份证号错误')) {
+      submittedName.value = formData.studentName
+      hasSearched.value = true
+    } else {
+      errorMessage.value = '成绩查询失败，请稍后重试。'
+    }
   } finally {
     loading.value = false
   }
