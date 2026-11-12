@@ -204,15 +204,15 @@ docker-compose up -d
 | `SCORE_AI_API_KEY` | 接口密钥（可留空） | 空 |
 | `SCORE_AI_TIMEOUT_SECONDS` | 调用超时秒数 | `8` |
 | `SCORE_PUBLIC_BASE_URL` | 站点公开地址，OAuth 回调后跳转用 | `https://score.ozoo.top` |
-| `GITHUB_CLIENT_ID` | GitHub OAuth App 的 Client ID | 空（未配置时隐藏 GitHub 登录） |
-| `GITHUB_CLIENT_SECRET` | GitHub OAuth App 的 Client Secret | 空 |
+| `GITHUB_CLIENT_ID` | GitHub OAuth App 的 Client ID | 空（也可在管理员「设置」页填写，数据库优先） |
+| `GITHUB_CLIENT_SECRET` | GitHub OAuth App 的 Client Secret | 空（设置页只回显掩码，保存后立即生效） |
 | `GITHUB_REDIRECT_URI` | OAuth 回调地址 | `.../score/api/scoreCheck/auth/github/callback` |
 
 ## 设计特色
 
 - **学年学期隔离** — 学生、成绩按 `academic_year` + `semester` 存放；教师端和学生查分页都可选择学期，默认当前学期
 - **管理员设置页** — 仅 `admin` 角色可见，可在线配置 AI 表头识别、新增学期和切换当前学期
-- **GitHub 登录** — 管理员先用密码登录并在设置页绑定 GitHub，之后可在登录页直接使用 GitHub 登录；未绑定或未配置时按钮隐藏
+- **GitHub 登录** — Client ID / Secret 和 GitHub 绑定都在管理员「设置」页完成，保存即生效；未配置时登录按钮隐藏，未绑定的 GitHub 账号无法登录
 - **自适应滑块验证码** — 首次登录免验证码；同一账号 + IP 连续失败 3 次后才要求，并按 IP 限速
 - **宽松 Excel 导入** — 自动识别标题行和常见表头别名，可手动调整列映射，导入前预览逐行错误；可选 AI 建议映射（只发送表头和脱敏样例）
 - **多租户隔离** — 基于 MyBatis-Plus 租户插件，教师仅可查看和管理本班数据

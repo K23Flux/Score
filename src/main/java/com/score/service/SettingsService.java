@@ -20,6 +20,8 @@ public class SettingsService {
     public static final String AI_BASE_URL = "ai.baseUrl";
     public static final String AI_MODEL = "ai.model";
     public static final String AI_API_KEY = "ai.apiKey";
+    public static final String GITHUB_CLIENT_ID = "github.clientId";
+    public static final String GITHUB_CLIENT_SECRET = "github.clientSecret";
 
     @Value("${score.ai.enabled:false}")
     private boolean envEnabled;
@@ -29,6 +31,10 @@ public class SettingsService {
     private String envModel;
     @Value("${score.ai.api-key:}")
     private String envApiKey;
+    @Value("${score.github.client-id:}")
+    private String envGithubClientId;
+    @Value("${score.github.client-secret:}")
+    private String envGithubClientSecret;
 
     @Autowired
     private AppSettingMapper settingMapper;
@@ -46,6 +52,30 @@ public class SettingsService {
         return settings.enabled()
                 && StringUtils.hasText(settings.baseUrl())
                 && StringUtils.hasText(settings.model());
+    }
+
+    /** GitHub OAuth 凭据：数据库优先，未写入时回退环境变量。 */
+    public GithubConfig github() {
+        return new GithubConfig(
+                trim(get(GITHUB_CLIENT_ID, envGithubClientId)),
+                trim(get(GITHUB_CLIENT_SECRET, envGithubClientSecret)));
+    }
+
+    public void saveGithub(String clientId, String clientSecret, boolean clearSecret) {
+        if (clientId != null) {
+            put(GITHUB_CLIENT_ID, clientId.trim());
+        }
+        if (clearSecret) {
+            put(GITHUB_CLIENT_SECRET, "");
+        } else if (StringUtils.hasText(clientSecret)) {
+            put(GITHUB_CLIENT_SECRET, clientSecret.trim());
+        }
+    }
+
+    public record GithubConfig(String clientId, String clientSecret) {
+        public boolean enabled() {
+            return StringUtils.hasText(clientId) && StringUtils.hasText(clientSecret);
+        }
     }
 
     public void saveAi(AiSettingsBo bo) {

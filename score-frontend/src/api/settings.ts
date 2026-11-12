@@ -59,3 +59,14 @@ export function getGithubBindUrl(): Promise<ApiResponse<{ url: string }>> {
 export function unbindGithub(): Promise<ApiResponse> {
   return request.post('/scoreCheck/settings/github/unbind')
 }
+
+/**
+ * 在线保存 GitHub OAuth App 凭据
+ */
+export function updateGithubConfig(data: {
+  clientId?: string
+  clientSecret?: string
+  clearClientSecret?: boolean
+}): Promise<ApiResponse> {
+  return request.put('/scoreCheck/settings/github/config', data)
+}

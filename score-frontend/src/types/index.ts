@@ -192,6 +192,10 @@ export interface GithubBinding {
   enabled: boolean
   bound: boolean
   login: string
+  clientId: string
+  clientSecretSet: boolean
+  clientSecretMasked: string
+  redirectUri: string
 }
 
 /**

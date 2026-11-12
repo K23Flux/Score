@@ -10,6 +10,7 @@ import {
   setCurrentTerm,
   unbindGithub,
   updateAiSettings,
+  updateGithubConfig,
 } from '@/api/settings'
 import { useTermStore } from '@/stores/term'
 import type { Term } from '@/types'
@@ -35,7 +36,18 @@ const termSaving = ref(false)
 const newTerm = reactive({ academicYear: '', semester: '1', current: false })
 
 const githubLoading = ref(false)
-const github = reactive({ enabled: false, bound: false, login: '' })
+const githubSaving = ref(false)
+const github = reactive({
+  enabled: false,
+  bound: false,
+  login: '',
+  clientId: '',
+  clientSecret: '',
+  clientSecretSet: false,
+  clientSecretMasked: '',
+  clearClientSecret: false,
+  redirectUri: '',
+})
 
 onMounted(() => {
   document.title = '设置 · 成绩查询平台'
@@ -53,9 +65,32 @@ async function loadGithub() {
       github.enabled = res.data.enabled
       github.bound = res.data.bound
       github.login = res.data.login || ''
+      github.clientId = res.data.clientId || ''
+      github.clientSecretSet = res.data.clientSecretSet
+      github.clientSecretMasked = res.data.clientSecretMasked || ''
+      github.redirectUri = res.data.redirectUri || ''
+      github.clientSecret = ''
+      github.clearClientSecret = false
     }
   } catch {
     // 设置页其他功能不受影响
+  }
+}
+
+async function saveGithubConfig() {
+  githubSaving.value = true
+  try {
+    await updateGithubConfig({
+      clientId: github.clientId.trim(),
+      clientSecret: github.clientSecret.trim() || undefined,
+      clearClientSecret: github.clearClientSecret,
+    })
+    ElMessage.success('GitHub 凭据已保存')
+    await loadGithub()
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '保存失败')
+  } finally {
+    githubSaving.value = false
   }
 }
 
@@ -231,6 +266,30 @@ async function makeCurrent(term: Term) {
           {{ github.bound ? '已绑定' : '未绑定' }}
         </el-tag>
       </div>
+      <el-form label-position="top" class="setting-form">
+        <el-form-item label="Client ID">
+          <el-input v-model="github.clientId" placeholder="GitHub OAuth App 的 Client ID" clearable />
+        </el-form-item>
+        <el-form-item label="Client Secret">
+          <el-input
+            v-model="github.clientSecret"
+            type="password"
+            show-password
+            clearable
+            :placeholder="github.clientSecretSet ? `已设置（${github.clientSecretMasked}），留空不修改` : 'GitHub OAuth App 的 Client Secret'"
+          />
+          <el-checkbox v-if="github.clientSecretSet" v-model="github.clearClientSecret" class="clear-key">
+            清除已保存的 Secret
+          </el-checkbox>
+        </el-form-item>
+        <el-form-item label="回调地址（填到 GitHub OAuth App）">
+          <el-input :model-value="github.redirectUri" readonly />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" :loading="githubSaving" @click="saveGithubConfig">保存凭据</el-button>
+        </el-form-item>
+      </el-form>
+
       <div class="github-row">
         <template v-if="github.bound">
           <span class="github-account">@{{ github.login }}</span>
@@ -247,7 +306,7 @@ async function makeCurrent(term: Term) {
             绑定 GitHub
           </el-button>
           <span v-if="!github.enabled" class="hint">
-            需先在服务器配置 GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET
+            先在上方填写并保存 Client ID / Client Secret，才能绑定
           </span>
         </template>
       </div>

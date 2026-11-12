@@ -27,38 +27,39 @@ public class GithubOAuthService {
     private static final String TOKEN_URL = "https://github.com/login/oauth/access_token";
     private static final String USER_URL = "https://api.github.com/user";
 
-    @Value("${score.github.client-id:}")
-    private String clientId;
-    @Value("${score.github.client-secret:}")
-    private String clientSecret;
     @Value("${score.github.redirect-uri:}")
     private String redirectUri;
 
     @Autowired
     private ObjectMapper objectMapper;
+    @Autowired
+    private SettingsService settingsService;
+
+    public String getRedirectUri() {
+        return redirectUri;
+    }
 
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
 
     public boolean isEnabled() {
-        return StringUtils.hasText(clientId)
-                && StringUtils.hasText(clientSecret)
-                && StringUtils.hasText(redirectUri);
+        return settingsService.github().enabled() && StringUtils.hasText(redirectUri);
     }
 
     public String authorizeUrl(String state) {
         return AUTHORIZE_URL
-                + "?client_id=" + encode(clientId)
+                + "?client_id=" + encode(settingsService.github().clientId())
                 + "&redirect_uri=" + encode(redirectUri)
                 + "&scope=" + encode("read:user")
                 + "&state=" + encode(state);
     }
 
     public GithubUser exchange(String code) throws Exception {
+        SettingsService.GithubConfig config = settingsService.github();
         ObjectNode body = objectMapper.createObjectNode();
-        body.put("client_id", clientId);
-        body.put("client_secret", clientSecret);
+        body.put("client_id", config.clientId());
+        body.put("client_secret", config.clientSecret());
         body.put("code", code);
         body.put("redirect_uri", redirectUri);
 

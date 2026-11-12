@@ -6,6 +6,7 @@ import com.score.entity.Admin;
 import com.score.entity.OAuthState;
 import com.score.entity.bo.AcademicTermBo;
 import com.score.entity.bo.AiSettingsBo;
+import com.score.entity.bo.GithubSettingsBo;
 import com.score.mapper.AdminMapper;
 import com.score.service.AdminGuardService;
 import com.score.service.AiSettings;
@@ -49,11 +50,28 @@ public class SettingsController {
     @GetMapping("/github")
     public ResultVo<?> getGithubBinding() {
         Admin admin = adminGuardService.requireAdmin();
+        SettingsService.GithubConfig config = settingsService.github();
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("enabled", githubOAuthService.isEnabled());
         data.put("bound", admin.getGithubId() != null);
         data.put("login", admin.getGithubLogin() == null ? "" : admin.getGithubLogin());
+        data.put("clientId", config.clientId());
+        data.put("clientSecretSet", StringUtils.hasText(config.clientSecret()));
+        data.put("clientSecretMasked", mask(config.clientSecret()));
+        data.put("redirectUri", githubOAuthService.getRedirectUri());
         return ResultVo.success(data);
+    }
+
+    /** 在线保存 GitHub OAuth App 的 Client ID / Secret，立即生效。 */
+    @PutMapping("/github/config")
+    public ResultVo<?> saveGithubConfig(@RequestBody GithubSettingsBo bo) {
+        adminGuardService.requireAdmin();
+        if (bo == null) {
+            throw new IllegalArgumentException("配置不能为空");
+        }
+        settingsService.saveGithub(bo.getClientId(), bo.getClientSecret(),
+                Boolean.TRUE.equals(bo.getClearClientSecret()));
+        return ResultVo.success("保存成功");
     }
 
     /** 返回绑定 GitHub 的授权地址。 */
