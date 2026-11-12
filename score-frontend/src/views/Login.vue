@@ -1,20 +1,23 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { PhLock, PhUser } from '@phosphor-icons/vue'
-import { getLoginPolicy, login } from '@/api/auth'
+import { PhGithubLogo, PhLock, PhUser } from '@phosphor-icons/vue'
+import { exchangeTicket, getGithubLoginUrl, getGithubStatus, getLoginPolicy, login } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
 import SliderCaptcha from '@/components/SliderCaptcha.vue'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 
 const formRef = ref<FormInstance>()
 const loading = ref(false)
 const showCaptcha = ref(false)
 const captchaToken = ref('')
+const githubEnabled = ref(false)
+const githubLoading = ref(false)
 
 const formData = reactive({ userName: '', password: '' })
 
@@ -83,8 +86,62 @@ const handleCaptchaSuccess = (token: string) => {
 
 const goToStudentQuery = () => router.push('/student-query')
 
-onMounted(() => {
+async function loginWithGithub() {
+  if (githubLoading.value) return
+  githubLoading.value = true
+  try {
+    const res = await getGithubLoginUrl()
+    const url = res.data?.url
+    if (!url) {
+      ElMessage.error('GitHub 登录暂不可用')
+      return
+    }
+    window.location.href = url
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : 'GitHub 登录暂不可用')
+  } finally {
+    githubLoading.value = false
+  }
+}
+
+async function handleGithubTicket(ticket: string) {
+  try {
+    const res = await exchangeTicket(ticket)
+    const data = res.data
+    if (data?.token) {
+      authStore.setToken(data.token)
+      authStore.setUserInfo(data.userName || '', data.className || '', data.role || 'admin')
+      ElMessage.success('登录成功')
+      router.replace('/teacher/dashboard')
+      return
+    }
+    ElMessage.error('GitHub 登录失败，请重试')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : 'GitHub 登录失败，请重试')
+  }
+}
+
+onMounted(async () => {
   document.title = '教师登录 · 成绩查询平台'
+
+  const ticket = typeof route.query.ticket === 'string' ? route.query.ticket : ''
+  if (ticket) {
+    await handleGithubTicket(ticket)
+    return
+  }
+  const githubError = typeof route.query.githubError === 'string' ? route.query.githubError : ''
+  if (githubError === 'not_bound') {
+    ElMessage.warning('该 GitHub 账号尚未绑定管理员，请先用密码登录后在「设置」中绑定')
+  } else if (githubError) {
+    ElMessage.error('GitHub 登录失败，请重试')
+  }
+
+  try {
+    const res = await getGithubStatus()
+    githubEnabled.value = !!res.data?.enabled
+  } catch {
+    githubEnabled.value = false
+  }
 })
 </script>
 
@@ -124,6 +181,15 @@ onMounted(() => {
 
         <el-button class="login-submit" type="primary" :loading="loading" @click="handleLogin">
           登录
+        </el-button>
+        <el-button
+          v-if="githubEnabled"
+          class="github-login"
+          :loading="githubLoading"
+          @click="loginWithGithub"
+        >
+          <PhGithubLogo size="16" weight="fill" />
+          <span>使用 GitHub 登录</span>
         </el-button>
       </el-form>
 
@@ -182,6 +248,15 @@ h1 {
   margin: 0 0 24px;
   font-size: 13px;
   color: var(--color-text-muted);
+}
+
+.github-login {
+  width: 100%;
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 .login-submit {

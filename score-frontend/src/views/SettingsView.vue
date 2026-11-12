@@ -1,10 +1,20 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
-import { createTerm, getAiSettings, setCurrentTerm, updateAiSettings } from '@/api/settings'
+import { useRoute } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import {
+  createTerm,
+  getAiSettings,
+  getGithubBindUrl,
+  getGithubBinding,
+  setCurrentTerm,
+  unbindGithub,
+  updateAiSettings,
+} from '@/api/settings'
 import { useTermStore } from '@/stores/term'
 import type { Term } from '@/types'
 
+const route = useRoute()
 const termStore = useTermStore()
 
 const aiLoading = ref(false)
@@ -24,11 +34,62 @@ const termLoading = ref(false)
 const termSaving = ref(false)
 const newTerm = reactive({ academicYear: '', semester: '1', current: false })
 
+const githubLoading = ref(false)
+const github = reactive({ enabled: false, bound: false, login: '' })
+
 onMounted(() => {
   document.title = '设置 · 成绩查询平台'
   loadAiSettings()
+  loadGithub()
   termStore.load(true).catch(() => {})
+  if (route.query.github === 'bound') ElMessage.success('GitHub 绑定成功')
+  else if (route.query.github === 'error') ElMessage.error('GitHub 绑定失败，请重试')
 })
+
+async function loadGithub() {
+  try {
+    const res = await getGithubBinding()
+    if (res.data) {
+      github.enabled = res.data.enabled
+      github.bound = res.data.bound
+      github.login = res.data.login || ''
+    }
+  } catch {
+    // 设置页其他功能不受影响
+  }
+}
+
+async function bindGithub() {
+  githubLoading.value = true
+  try {
+    const res = await getGithubBindUrl()
+    const url = res.data?.url
+    if (!url) {
+      ElMessage.error('GitHub 登录尚未配置')
+      return
+    }
+    window.location.href = url
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '操作失败')
+  } finally {
+    githubLoading.value = false
+  }
+}
+
+async function unbindGithubAccount() {
+  try {
+    await ElMessageBox.confirm('解除后该 GitHub 账号将无法登录，仍可使用密码登录。', '解除 GitHub 绑定', {
+      type: 'warning',
+      confirmButtonText: '解除',
+      cancelButtonText: '取消',
+    })
+    await unbindGithub()
+    ElMessage.success('已解除绑定')
+    await loadGithub()
+  } catch {
+    // 取消或失败已提示
+  }
+}
 
 async function loadAiSettings() {
   aiLoading.value = true
@@ -163,6 +224,38 @@ async function makeCurrent(term: Term) {
     <section class="setting-card">
       <div class="card-head">
         <div>
+          <h2>GitHub 登录</h2>
+          <p>管理员先用密码登录并绑定 GitHub，之后可在登录页使用 GitHub 登录。</p>
+        </div>
+        <el-tag :type="github.bound ? 'success' : 'info'" effect="plain">
+          {{ github.bound ? '已绑定' : '未绑定' }}
+        </el-tag>
+      </div>
+      <div class="github-row">
+        <template v-if="github.bound">
+          <span class="github-account">@{{ github.login }}</span>
+          <el-button size="small" @click="unbindGithubAccount">解除绑定</el-button>
+        </template>
+        <template v-else>
+          <el-button
+            type="primary"
+            plain
+            :loading="githubLoading"
+            :disabled="!github.enabled"
+            @click="bindGithub"
+          >
+            绑定 GitHub
+          </el-button>
+          <span v-if="!github.enabled" class="hint">
+            需先在服务器配置 GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET
+          </span>
+        </template>
+      </div>
+    </section>
+
+    <section class="setting-card">
+      <div class="card-head">
+        <div>
           <h2>学年学期</h2>
           <p>学生和成绩按学期分开存放；教师端左上角和导入页都按所选学期操作。</p>
         </div>
@@ -289,5 +382,18 @@ async function makeCurrent(term: Term) {
 
 .muted {
   color: var(--color-text-secondary, #9ca3af);
+}
+
+.github-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.github-account {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  color: var(--color-text, #111827);
 }
 </style>

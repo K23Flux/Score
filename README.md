@@ -25,7 +25,7 @@
 |------|------|
 | **学生** | 无需登录，选择学年学期后凭姓名 + 身份证号查询个人成绩；按考试分组展示各科分数、总分与平均分；彩色等级标识（优秀/良好/及格/不及格） |
 | **教师** | 工作台总览、按学生/考试搜索成绩、Excel 批量导入学生与成绩数据（列映射预览、逐行校验）、分页浏览学生名单、教师账号 CRUD；按班级和学年学期隔离数据 |
-| **管理员** | 在「设置」页配置 AI 表头识别（OpenAI 兼容接口、模型、密钥），管理学年学期（新增、设为当前）；设置入口仅 `admin` 角色可见 |
+| **管理员** | 在「设置」页配置 AI 表头识别（OpenAI 兼容接口、模型、密钥），管理学年学期（新增、设为当前），绑定 GitHub 账号后用 GitHub 登录；设置入口仅 `admin` 角色可见 |
 
 ## 技术栈
 
@@ -94,6 +94,8 @@ Score/
 | `score` | 成绩记录（按学期） | studentName, className, idCard, academicYear, semester, examName, subject, score, delFlag |
 | `academic_term` | 学年学期 | academicYear (如 `2026-2027`), semester (`1` / `2`), isCurrent, delFlag |
 | `app_setting` | 运行期设置 | settingKey, settingValue, updatedAt（AI 配置等，数据库优先于环境变量） |
+| `oauth_state` | GitHub 授权 state | state, mode (`login` / `bind`), adminUsername, expiresAt（10 分钟一次性） |
+| `login_ticket` | OAuth 登录一次性票据 | ticket, token, expiresAt（60 秒，换取登录态后删除） |
 
 `student` / `score` / `academic_term` 含 `del_flag` 软删除标记（`0`=正常，`1`=已删除）。
 按学年 + 学期隔离数据，默认当前学期为 `2026-2027 第一学期`。
@@ -124,6 +126,11 @@ Score/
 | GET / PUT | `/scoreCheck/settings/ai` | 读取 / 保存 AI 表头识别设置 | 仅管理员 |
 | POST | `/scoreCheck/settings/terms` | 新增学年学期 | 仅管理员 |
 | POST | `/scoreCheck/settings/terms/{id}/current` | 设为当前学期 | 仅管理员 |
+| GET | `/scoreCheck/auth/github/status` | GitHub 登录是否已配置 | 无 |
+| GET | `/scoreCheck/auth/github/authorize` | 获取 GitHub 登录跳转地址 | 无 |
+| GET | `/scoreCheck/auth/github/callback` | GitHub 回调（登录 / 绑定） | 无 |
+| POST | `/scoreCheck/auth/ticket` | 一次性票据换取登录态 | 无 |
+| GET / POST | `/scoreCheck/settings/github`、`/github/authorize`、`/github/unbind` | 查看 / 绑定 / 解除 GitHub | 仅管理员 |
 | POST | `/captcha/genCaptcha` | 生成验证码 | 无 |
 | POST | `/captcha/check` | 校验验证码 | 无 |
 
@@ -196,11 +203,16 @@ docker-compose up -d
 | `SCORE_AI_MODEL` | 模型名称 | 空 |
 | `SCORE_AI_API_KEY` | 接口密钥（可留空） | 空 |
 | `SCORE_AI_TIMEOUT_SECONDS` | 调用超时秒数 | `8` |
+| `SCORE_PUBLIC_BASE_URL` | 站点公开地址，OAuth 回调后跳转用 | `https://score.ozoo.top` |
+| `GITHUB_CLIENT_ID` | GitHub OAuth App 的 Client ID | 空（未配置时隐藏 GitHub 登录） |
+| `GITHUB_CLIENT_SECRET` | GitHub OAuth App 的 Client Secret | 空 |
+| `GITHUB_REDIRECT_URI` | OAuth 回调地址 | `.../score/api/scoreCheck/auth/github/callback` |
 
 ## 设计特色
 
 - **学年学期隔离** — 学生、成绩按 `academic_year` + `semester` 存放；教师端和学生查分页都可选择学期，默认当前学期
 - **管理员设置页** — 仅 `admin` 角色可见，可在线配置 AI 表头识别、新增学期和切换当前学期
+- **GitHub 登录** — 管理员先用密码登录并在设置页绑定 GitHub，之后可在登录页直接使用 GitHub 登录；未绑定或未配置时按钮隐藏
 - **自适应滑块验证码** — 首次登录免验证码；同一账号 + IP 连续失败 3 次后才要求，并按 IP 限速
 - **宽松 Excel 导入** — 自动识别标题行和常见表头别名，可手动调整列映射，导入前预览逐行错误；可选 AI 建议映射（只发送表头和脱敏样例）
 - **多租户隔离** — 基于 MyBatis-Plus 租户插件，教师仅可查看和管理本班数据

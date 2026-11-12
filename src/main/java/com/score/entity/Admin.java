@@ -32,6 +32,13 @@ public class Admin {
     /** 角色：admin=管理员，teacher=教师 */
     private String role;
 
+    /** 绑定的 GitHub 数字 ID */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private Long githubId;
+
+    /** 绑定的 GitHub 登录名（仅用于展示） */
+    private String githubLogin;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private Date createTime;
     private String delFlag;

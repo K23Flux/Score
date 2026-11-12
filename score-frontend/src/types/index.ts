@@ -179,6 +179,22 @@ export interface CurrentUser {
 }
 
 /**
+ * GitHub 登录状态
+ */
+export interface GithubStatus {
+  enabled: boolean
+}
+
+/**
+ * 管理员 GitHub 绑定状态
+ */
+export interface GithubBinding {
+  enabled: boolean
+  bound: boolean
+  login: string
+}
+
+/**
  * 导入文件中的一列
  */
 export interface ImportColumn {

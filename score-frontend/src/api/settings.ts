@@ -1,5 +1,5 @@
 import request from '@/utils/request'
-import type { AiSettingView, ApiResponse, Term } from '@/types'
+import type { AiSettingView, ApiResponse, GithubBinding, Term } from '@/types'
 
 /**
  * 读取 AI 表头识别设置（仅管理员）
@@ -37,4 +37,25 @@ export function createTerm(data: {
  */
 export function setCurrentTerm(id: number): Promise<ApiResponse> {
   return request.post(`/scoreCheck/settings/terms/${id}/current`)
+}
+
+/**
+ * 管理员 GitHub 绑定状态
+ */
+export function getGithubBinding(): Promise<ApiResponse<GithubBinding>> {
+  return request.get('/scoreCheck/settings/github')
+}
+
+/**
+ * 获取绑定 GitHub 的授权地址
+ */
+export function getGithubBindUrl(): Promise<ApiResponse<{ url: string }>> {
+  return request.get('/scoreCheck/settings/github/authorize')
+}
+
+/**
+ * 解除 GitHub 绑定
+ */
+export function unbindGithub(): Promise<ApiResponse> {
+  return request.post('/scoreCheck/settings/github/unbind')
 }

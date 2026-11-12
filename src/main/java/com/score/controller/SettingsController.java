@@ -1,10 +1,16 @@
 package com.score.controller;
 
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.score.common.ResultVo;
+import com.score.entity.Admin;
+import com.score.entity.OAuthState;
 import com.score.entity.bo.AcademicTermBo;
 import com.score.entity.bo.AiSettingsBo;
+import com.score.mapper.AdminMapper;
 import com.score.service.AdminGuardService;
 import com.score.service.AiSettings;
+import com.score.service.GithubOAuthService;
+import com.score.service.OAuthStoreService;
 import com.score.service.SettingsService;
 import com.score.service.TermService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,6 +39,45 @@ public class SettingsController {
     private TermService termService;
     @Autowired
     private AdminGuardService adminGuardService;
+    @Autowired
+    private GithubOAuthService githubOAuthService;
+    @Autowired
+    private OAuthStoreService oauthStoreService;
+    @Autowired
+    private AdminMapper adminMapper;
+
+    @GetMapping("/github")
+    public ResultVo<?> getGithubBinding() {
+        Admin admin = adminGuardService.requireAdmin();
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("enabled", githubOAuthService.isEnabled());
+        data.put("bound", admin.getGithubId() != null);
+        data.put("login", admin.getGithubLogin() == null ? "" : admin.getGithubLogin());
+        return ResultVo.success(data);
+    }
+
+    /** 返回绑定 GitHub 的授权地址。 */
+    @GetMapping("/github/authorize")
+    public ResultVo<?> githubBindAuthorize() {
+        Admin admin = adminGuardService.requireAdmin();
+        if (!githubOAuthService.isEnabled()) {
+            return ResultVo.error("GitHub 登录尚未配置");
+        }
+        OAuthState state = oauthStoreService.createState("bind", admin.getUserName());
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("url", githubOAuthService.authorizeUrl(state.getState()));
+        return ResultVo.success(data);
+    }
+
+    @PostMapping("/github/unbind")
+    public ResultVo<?> githubUnbind() {
+        Admin admin = adminGuardService.requireAdmin();
+        adminMapper.update(null, new LambdaUpdateWrapper<Admin>()
+                .eq(Admin::getId, admin.getId())
+                .set(Admin::getGithubId, null)
+                .set(Admin::getGithubLogin, null));
+        return ResultVo.success("已解除绑定");
+    }
 
     @GetMapping("/ai")
     public ResultVo<?> getAiSettings() {

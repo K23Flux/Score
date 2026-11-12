@@ -26,6 +26,7 @@ public class SaTokenConfig implements WebMvcConfigurer {
                             "/scoreCheck/loginPolicy",
                             "/scoreCheck/StudentCheck",
                             "/scoreCheck/terms",
+                            "/scoreCheck/auth/**",
                             "/scoreCheck/logout",
                             "/captcha/genCaptcha",
                             "/captcha/check"

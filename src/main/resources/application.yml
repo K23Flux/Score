@@ -96,7 +96,13 @@ captcha:
 
 
 # 可选：AI 表头识别（只发送表头和脱敏样例，不发送姓名、身份证原文）
+# GitHub OAuth：需在 GitHub 创建 OAuth App，回调地址为 {public-base-url}/score/api/scoreCheck/auth/github/callback
 score:
+  public-base-url: ${SCORE_PUBLIC_BASE_URL:https://score.ozoo.top}
+  github:
+    client-id: ${GITHUB_CLIENT_ID:}
+    client-secret: ${GITHUB_CLIENT_SECRET:}
+    redirect-uri: ${GITHUB_REDIRECT_URI:https://score.ozoo.top/score/api/scoreCheck/auth/github/callback}
   ai:
     enabled: ${SCORE_AI_ENABLED:false}
     base-url: ${SCORE_AI_BASE_URL:}

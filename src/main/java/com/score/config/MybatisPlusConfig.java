@@ -44,7 +44,9 @@ public class MybatisPlusConfig {
                 // admin、系统设置和学期表不属于班级数据，不注入 class_name
                 return "admin".equalsIgnoreCase(tableName)
                         || "app_setting".equalsIgnoreCase(tableName)
-                        || "academic_term".equalsIgnoreCase(tableName);
+                        || "academic_term".equalsIgnoreCase(tableName)
+                        || "oauth_state".equalsIgnoreCase(tableName)
+                        || "login_ticket".equalsIgnoreCase(tableName);
             }
         }));
 
