@@ -2,12 +2,15 @@
 
 > 一款面向师生的成绩管理与查询系统，支持学生在线查分、教师批量导入与数据管理。
 
+> **分支说明**：当前开发与部署版本在 `feat/chinese-light-theme` 分支（中文亮色界面、设置页、学年学期），`master` 是早期基线。
+
 ## 功能概览
 
 | 角色 | 功能 |
 |------|------|
-| **学生** | 无需登录，凭姓名 + 身份证号查询个人成绩；按考试分组展示各科分数、总分与平均分；彩色等级标识（优秀/良好/及格/不及格） |
-| **教师** | 工作台总览、按学生/考试搜索成绩、Excel 批量导入学生与成绩数据、分页浏览学生名单、教师账号 CRUD；多租户隔离（教师仅可见本班数据） |
+| **学生** | 无需登录，选择学年学期后凭姓名 + 身份证号查询个人成绩；按考试分组展示各科分数、总分与平均分；彩色等级标识（优秀/良好/及格/不及格） |
+| **教师** | 工作台总览、按学生/考试搜索成绩、Excel 批量导入学生与成绩数据（列映射预览、逐行校验）、分页浏览学生名单、教师账号 CRUD；按班级和学年学期隔离数据 |
+| **管理员** | 在「设置」页配置 AI 表头识别（OpenAI 兼容接口、模型、密钥），管理学年学期（新增、设为当前）；设置入口仅 `admin` 角色可见 |
 
 ## 技术栈
 
@@ -33,7 +36,7 @@
 **部署**
 
 - Docker + Docker Compose
-- Nginx（反向代理，`/score/` 路径）
+- Caddy / Nginx（反向代理，`/score/` 路径）
 
 ## 项目结构
 
@@ -43,8 +46,8 @@ Score/
 │   ├── ScoreApplication.java         # Spring Boot 入口
 │   ├── common/                       # 统一响应体、全局异常处理
 │   ├── config/                       # Sa-Token、MyBatis-Plus、验证码配置
-│   ├── controller/                   # REST 接口（ScoreCheckController、CaptchaController）
-│   ├── entity/                       # 数据模型（Admin、Student、Score）
+│   ├── controller/                   # REST 接口（ScoreCheckController、SettingsController、CaptchaController）
+│   ├── entity/                       # 数据模型（Admin、Student、Score、AcademicTerm、AppSetting）
 │   ├── mapper/                       # MyBatis-Plus Mapper 接口
 │   ├── service/                      # 业务逻辑层
 │   └── Listener/                     # EasyExcel 导入监听器
@@ -71,11 +74,14 @@ Score/
 
 | 表名 | 说明 | 关键字段 |
 |------|------|----------|
-| `admin` | 教师/管理员账号 | username, password (BCrypt), className, delFlag |
-| `student` | 学生信息 | studentName, className, idCard (唯一标识), delFlag |
-| `score` | 成绩记录 | studentName, className, idCard, examName, subject, score, delFlag |
+| `admin` | 教师/管理员账号 | username, password (BCrypt), className, role (`admin` / `teacher`), delFlag |
+| `student` | 学生信息（按学期） | studentName, className, idCard, academicYear, semester, delFlag |
+| `score` | 成绩记录（按学期） | studentName, className, idCard, academicYear, semester, examName, subject, score, delFlag |
+| `academic_term` | 学年学期 | academicYear (如 `2026-2027`), semester (`1` / `2`), isCurrent, delFlag |
+| `app_setting` | 运行期设置 | settingKey, settingValue, updatedAt（AI 配置等，数据库优先于环境变量） |
 
-所有表均含 `del_flag` 软删除标记（`0`=正常，`1`=已删除）。
+`student` / `score` / `academic_term` 含 `del_flag` 软删除标记（`0`=正常，`1`=已删除）。
+按学年 + 学期隔离数据，默认当前学期为 `2026-2027 第一学期`。
 
 ## API 接口
 
@@ -83,17 +89,26 @@ Score/
 
 | 方法 | 路径 | 说明 | 鉴权 |
 |------|------|------|------|
-| POST | `/scoreCheck/StudentCheck` | 学生查询成绩 | 无 |
-| POST | `/scoreCheck/login` | 教师登录（含验证码） | 无 |
+| POST | `/scoreCheck/StudentCheck` | 学生查询成绩（可按学期） | 无 |
+| GET | `/scoreCheck/terms` | 学年学期列表 | 无 |
+| POST | `/scoreCheck/login` | 教师登录（连续失败后才要求验证码） | 无 |
+| GET | `/scoreCheck/loginPolicy` | 查询是否需要验证码或已被限速 | 无 |
 | POST | `/scoreCheck/logout` | 退出登录 | ✅ |
-| POST | `/scoreCheck/checkList` | 教师查询成绩列表 | ✅ |
-| POST | `/scoreCheck/importStudent` | 批量导入学生（Excel） | ✅ |
-| POST | `/scoreCheck/importScore` | 批量导入成绩（Excel） | ✅ |
+| GET | `/scoreCheck/me` | 当前登录账号与角色 | ✅ |
+| POST | `/scoreCheck/checkList` | 教师查询成绩列表（可按学期） | ✅ |
+| POST | `/scoreCheck/import/student/preview` | 学生导入预览（列映射 + 校验） | ✅ |
+| POST | `/scoreCheck/import/student/commit` | 学生导入提交 | ✅ |
+| POST | `/scoreCheck/import/score/preview` | 成绩导入预览 | ✅ |
+| POST | `/scoreCheck/import/score/commit` | 成绩导入提交 | ✅ |
+| POST | `/scoreCheck/importStudent`、`/importScore` | 旧版直接导入（保留兼容） | ✅ |
 | POST | `/scoreCheck/creatAdmin` | 创建教师账号 | ✅ |
 | GET | `/scoreCheck/getUserList` | 分页获取教师列表 | ✅ |
 | POST | `/scoreCheck/updateUser` | 更新教师信息 | ✅ |
 | DELETE | `/scoreCheck/{userName}` | 删除教师账号（软删） | ✅ |
-| POST | `/scoreCheck/getStudent` | 分页获取学生列表 | ✅ |
+| POST | `/scoreCheck/getStudent` | 分页获取学生列表（可按学期） | ✅ |
+| GET / PUT | `/scoreCheck/settings/ai` | 读取 / 保存 AI 表头识别设置 | 仅管理员 |
+| POST | `/scoreCheck/settings/terms` | 新增学年学期 | 仅管理员 |
+| POST | `/scoreCheck/settings/terms/{id}/current` | 设为当前学期 | 仅管理员 |
 | POST | `/captcha/genCaptcha` | 生成验证码 | 无 |
 | POST | `/captcha/check` | 校验验证码 | 无 |
 
@@ -161,14 +176,21 @@ docker-compose up -d
 | `DB_USER` | 数据库用户名 | `score` |
 | `DB_PWD` | 数据库密码 | `score123` |
 | `MYSQL_ROOT_PWD` | MySQL root 密码 | `root123` |
+| `SCORE_AI_ENABLED` | 是否启用 AI 表头识别（可在「设置」页覆盖） | `false` |
+| `SCORE_AI_BASE_URL` | OpenAI 兼容接口地址，程序会请求 `{地址}/chat/completions` | 空 |
+| `SCORE_AI_MODEL` | 模型名称 | 空 |
+| `SCORE_AI_API_KEY` | 接口密钥（可留空） | 空 |
+| `SCORE_AI_TIMEOUT_SECONDS` | 调用超时秒数 | `8` |
 
 ## 设计特色
 
-- **终端美学 UI** — IBM Plex Mono 等宽字体 + 琥珀色点缀 + CRT 扫描线效果，工业风终端视觉
-- **滑块验证码** — 登录与注册环节集成 TianAi 滑块验证，保障平台安全
+- **学年学期隔离** — 学生、成绩按 `academic_year` + `semester` 存放；教师端和学生查分页都可选择学期，默认当前学期
+- **管理员设置页** — 仅 `admin` 角色可见，可在线配置 AI 表头识别、新增学期和切换当前学期
+- **自适应滑块验证码** — 首次登录免验证码；同一账号 + IP 连续失败 3 次后才要求，并按 IP 限速
+- **宽松 Excel 导入** — 自动识别标题行和常见表头别名，可手动调整列映射，导入前预览逐行错误；可选 AI 建议映射（只发送表头和脱敏样例）
 - **多租户隔离** — 基于 MyBatis-Plus 租户插件，教师仅可查看和管理本班数据
-- **批量导入** — 支持 Excel 拖拽上传，学生与成绩数据分批次（50 条/批）入库
-- **暗色/亮色主题** — 完整的主题切换支持，适配不同使用场景
+- **终端美学 UI** — IBM Plex Mono 等宽字体 + 琥珀色点缀 + CRT 扫描线效果，工业风终端视觉
+- **亮色 / 暗色主题** — 完整的主题切换支持，适配不同使用场景
 
 ## 构建与发布
 
