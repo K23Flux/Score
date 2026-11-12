@@ -58,7 +58,7 @@ const scoreRules: FormRules = {
 }
 
 const activeHint = computed(() => activeTab.value === 'student'
-  ? '表头会自动识别“姓名”“身份证”等常见写法；解析后可手动调整列映射。班级以上方填写为准。'
+  ? '表头会自动识别“姓名”“身份证”等常见写法，以及 手机号 / 家长姓名 / 家长手机号 / 关系 列；解析后可手动调整列映射。班级以上方填写为准。'
   : '表头会自动识别姓名和科目列；解析后可手动调整。缺考请留空，不要填“缺考”。')
 
 const mappingSourceText = computed(() => {

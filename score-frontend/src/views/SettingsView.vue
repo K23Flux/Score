@@ -8,6 +8,7 @@ import {
   getGithubBindUrl,
   getGithubBinding,
   setCurrentTerm,
+  testAiSettings,
   unbindGithub,
   updateAiSettings,
   updateGithubConfig,
@@ -20,6 +21,9 @@ const termStore = useTermStore()
 
 const aiLoading = ref(false)
 const aiSaving = ref(false)
+const aiTesting = ref(false)
+const aiTestMessage = ref('')
+const aiTestOk = ref(false)
 const aiForm = reactive({
   enabled: false,
   baseUrl: '',
@@ -148,6 +152,32 @@ async function loadAiSettings() {
   }
 }
 
+async function testAi() {
+  if (aiTesting.value) return
+  aiTesting.value = true
+  aiTestMessage.value = ''
+  try {
+    const res = await testAiSettings({
+      baseUrl: aiForm.baseUrl.trim() || undefined,
+      model: aiForm.model.trim() || undefined,
+      apiKey: aiForm.apiKey.trim() || undefined,
+    })
+    const data = res.data
+    if (data?.ok) {
+      aiTestOk.value = true
+      aiTestMessage.value = `连接成功（${data.latencyMs} ms）${data.reply ? '：' + data.reply : ''}`
+    } else {
+      aiTestOk.value = false
+      aiTestMessage.value = `连接失败：${data?.error || '未知错误'}`
+    }
+  } catch (error) {
+    aiTestOk.value = false
+    aiTestMessage.value = `连接失败：${error instanceof Error ? error.message : '请求异常'}`
+  } finally {
+    aiTesting.value = false
+  }
+}
+
 async function saveAi() {
   if (aiForm.enabled && (!aiForm.baseUrl.trim() || !aiForm.model.trim())) {
     ElMessage.warning('启用 AI 前请填写接口地址和模型名称')
@@ -252,6 +282,12 @@ async function makeCurrent(term: Term) {
         </el-form-item>
         <el-form-item>
           <el-button type="primary" :loading="aiSaving" @click="saveAi">保存</el-button>
+          <el-button :loading="aiTesting" @click="testAi">测试连接</el-button>
+          <span
+            v-if="aiTestMessage"
+            class="test-result"
+            :class="aiTestOk ? 'ok' : 'fail'"
+          >{{ aiTestMessage }}</span>
         </el-form-item>
       </el-form>
     </section>
@@ -414,6 +450,19 @@ async function makeCurrent(term: Term) {
   margin-top: 4px;
   font-size: 12px;
   color: var(--color-text-secondary, #6b7280);
+}
+
+.test-result {
+  margin-left: 10px;
+  font-size: 12px;
+}
+
+.test-result.ok {
+  color: #16a34a;
+}
+
+.test-result.fail {
+  color: #dc2626;
 }
 
 .clear-key {

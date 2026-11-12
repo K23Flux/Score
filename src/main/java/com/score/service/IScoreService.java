@@ -65,4 +65,9 @@ public interface IScoreService {
      * 查询学生名单（分页）
      */
     ResultVo<?> getStudent(AdminBo adminBo, Integer pageNum, Integer pageSize);
+
+    /**
+     * 编辑学生联系方式（学生手机号、家长信息）
+     */
+    ResultVo<?> updateStudentContact(com.score.entity.bo.StudentContactBo bo);
 }

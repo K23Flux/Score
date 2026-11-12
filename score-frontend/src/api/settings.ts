@@ -22,6 +22,17 @@ export function updateAiSettings(data: {
 }
 
 /**
+ * 测试 AI 接口连通性（仅管理员）
+ */
+export function testAiSettings(data: {
+  baseUrl?: string
+  model?: string
+  apiKey?: string
+}): Promise<ApiResponse<{ ok: boolean; latencyMs: number; reply: string; error: string | null }>> {
+  return request.post('/scoreCheck/settings/ai/test', data)
+}
+
+/**
  * 新建学期（仅管理员）
  */
 export function createTerm(data: {

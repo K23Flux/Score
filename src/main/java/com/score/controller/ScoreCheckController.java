@@ -45,6 +45,11 @@ public class ScoreCheckController {
     private ObjectMapper objectMapper;
 
     /** 当前登录账号信息（角色以数据库为准）。 */
+    @PostMapping("/updateStudent")
+    public ResultVo<?> updateStudent(@RequestBody com.score.entity.bo.StudentContactBo bo) {
+        return scoreService.updateStudentContact(bo);
+    }
+
     @GetMapping("/me")
     public ResultVo<?> me() {
         Admin admin = adminGuardService.currentUser();

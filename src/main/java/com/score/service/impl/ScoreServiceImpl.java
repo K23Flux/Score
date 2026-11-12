@@ -308,4 +308,40 @@ public class ScoreServiceImpl implements IScoreService {
            .orderByDesc(Student::getCreateTime);
         return ResultVo.success(studentMapper.selectPage(page, lqw));
     }
+
+    @Override
+    public ResultVo<?> updateStudentContact(com.score.entity.bo.StudentContactBo bo) {
+        if (bo == null || bo.getId() == null) {
+            return ResultVo.error("缺少学生 ID");
+        }
+        Student student = studentMapper.selectById(bo.getId());
+        if (student == null || !"0".equals(student.getDelFlag())) {
+            return ResultVo.error("学生不存在或不在本班");
+        }
+        if (!validPhone(bo.getPhone()) || !validPhone(bo.getParentPhone())) {
+            return ResultVo.error("手机号格式不正确");
+        }
+        if (bo.getPhone() != null) {
+            student.setPhone(bo.getPhone().trim());
+        }
+        if (bo.getParentName() != null) {
+            student.setParentName(bo.getParentName().trim());
+        }
+        if (bo.getParentPhone() != null) {
+            student.setParentPhone(bo.getParentPhone().trim());
+        }
+        if (bo.getParentRelation() != null) {
+            student.setParentRelation(bo.getParentRelation().trim());
+        }
+        int rows = studentMapper.updateById(student);
+        return rows > 0 ? ResultVo.success("保存成功") : ResultVo.error("保存失败");
+    }
+
+    private boolean validPhone(String value) {
+        if (!StringUtils.hasText(value)) {
+            return true;
+        }
+        String phone = value.trim();
+        return phone.length() >= 5 && phone.length() <= 20 && phone.matches("[0-9+\\-\\s]+");
+    }
 }

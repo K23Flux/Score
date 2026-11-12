@@ -1,10 +1,53 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref, watch } from 'vue'
-import { getStudentList } from '@/api/student'
+import { ElMessage } from 'element-plus'
+import { getStudentList, updateStudentContact } from '@/api/student'
 import { useTermStore } from '@/stores/term'
 import type { Student } from '@/types'
 
 const termStore = useTermStore()
+
+const editVisible = ref(false)
+const saving = ref(false)
+const editForm = reactive({
+  id: 0,
+  studentName: '',
+  phone: '',
+  parentName: '',
+  parentPhone: '',
+  parentRelation: '',
+})
+
+function openEdit(row: Student) {
+  editForm.id = row.id || 0
+  editForm.studentName = row.studentName
+  editForm.phone = row.phone || ''
+  editForm.parentName = row.parentName || ''
+  editForm.parentPhone = row.parentPhone || ''
+  editForm.parentRelation = row.parentRelation || ''
+  editVisible.value = true
+}
+
+async function saveContact() {
+  if (!editForm.id || saving.value) return
+  saving.value = true
+  try {
+    await updateStudentContact({
+      id: editForm.id,
+      phone: editForm.phone.trim(),
+      parentName: editForm.parentName.trim(),
+      parentPhone: editForm.parentPhone.trim(),
+      parentRelation: editForm.parentRelation,
+    })
+    ElMessage.success('保存成功')
+    editVisible.value = false
+    await loadData()
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '保存失败')
+  } finally {
+    saving.value = false
+  }
+}
 
 const loading = ref(false)
 const errorMessage = ref('')
@@ -128,6 +171,25 @@ onMounted(async () => {
             <span class="mono">{{ row.idCard || '—' }}</span>
           </template>
         </el-table-column>
+        <el-table-column label="学生手机号" width="140">
+          <template #default="{ row }">
+            <span class="mono">{{ row.phone || '—' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="家长" width="150">
+          <template #default="{ row }">
+            <template v-if="row.parentName">
+              {{ row.parentName }}
+              <span v-if="row.parentRelation" class="relation">（{{ row.parentRelation }}）</span>
+            </template>
+            <span v-else>—</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="家长手机号" width="140">
+          <template #default="{ row }">
+            <span class="mono">{{ row.parentPhone || '—' }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="录入日期" width="130">
           <template #default="{ row }">
             {{ row.createTime?.split(' ')[0] || '—' }}
@@ -139,6 +201,11 @@ onMounted(async () => {
               <i />
               {{ row.delFlag === '1' ? '停用' : '在读' }}
             </span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="80" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -158,6 +225,34 @@ onMounted(async () => {
         />
       </div>
     </div>
+
+    <el-dialog v-model="editVisible" title="编辑联系方式" width="480px">
+      <el-form label-position="top">
+        <el-form-item label="学生">
+          <span>{{ editForm.studentName }}</span>
+        </el-form-item>
+        <el-form-item label="学生手机号">
+          <el-input v-model="editForm.phone" maxlength="20" placeholder="选填" />
+        </el-form-item>
+        <el-form-item label="家长姓名">
+          <el-input v-model="editForm.parentName" maxlength="64" placeholder="选填" />
+        </el-form-item>
+        <el-form-item label="家长关系">
+          <el-select v-model="editForm.parentRelation" clearable placeholder="选择哪位家长">
+            <el-option label="父亲" value="父亲" />
+            <el-option label="母亲" value="母亲" />
+            <el-option label="其他" value="其他" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="家长手机号">
+          <el-input v-model="editForm.parentPhone" maxlength="20" placeholder="选填" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editVisible = false">取消</el-button>
+        <el-button type="primary" :loading="saving" @click="saveContact">保存</el-button>
+      </template>
+    </el-dialog>
   </section>
 </template>
 
@@ -246,6 +341,11 @@ onMounted(async () => {
 .mono {
   color: var(--color-text-secondary);
   font-variant-numeric: tabular-nums;
+}
+
+.relation {
+  color: var(--color-text-muted);
+  font-size: 12px;
 }
 
 .status {

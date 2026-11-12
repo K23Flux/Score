@@ -23,6 +23,10 @@ export interface Student {
   studentName: string
   className: string
   idCard: string
+  phone?: string
+  parentName?: string
+  parentPhone?: string
+  parentRelation?: string
   academicYear?: string
   semester?: string
   createTime?: string

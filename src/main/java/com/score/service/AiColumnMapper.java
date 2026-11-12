@@ -64,25 +64,59 @@ public class AiColumnMapper {
 
     private String call(ImportType type, List<String> headers, List<List<String>> samples) throws Exception {
         AiSettings ai = settingsService.ai();
+        return request(ai.baseUrl(), ai.apiKey(), ai.model(),
+                "你是成绩表结构识别助手。只返回一个 JSON 对象，不要 Markdown，不要解释。",
+                buildPrompt(type, headers, samples), null);
+    }
+
+    /**
+     * 设置页的“测试”按钮：用当前表单值或已保存配置发一次最小请求。
+     */
+    public AiTestResult test(String baseUrlOverride, String modelOverride, String apiKeyOverride) {
+        AiSettings saved = settingsService.ai();
+        String baseUrl = StringUtils.hasText(baseUrlOverride) ? baseUrlOverride.trim() : saved.baseUrl();
+        String model = StringUtils.hasText(modelOverride) ? modelOverride.trim() : saved.model();
+        String apiKey = StringUtils.hasText(apiKeyOverride) ? apiKeyOverride.trim() : saved.apiKey();
+        if (!StringUtils.hasText(baseUrl) || !StringUtils.hasText(model)) {
+            return new AiTestResult(false, 0, "", "请先填写接口地址和模型名称");
+        }
+        long start = System.currentTimeMillis();
+        try {
+            String reply = request(baseUrl, apiKey, model,
+                    "你是连接测试助手。", "请只回复 OK", 16);
+            return new AiTestResult(true, System.currentTimeMillis() - start, reply, null);
+        } catch (Exception e) {
+            String message = StringUtils.hasText(e.getMessage())
+                    ? e.getMessage()
+                    : e.getClass().getSimpleName();
+            return new AiTestResult(false, System.currentTimeMillis() - start, "", message);
+        }
+    }
+
+    private String request(String baseUrl, String apiKey, String model,
+                           String systemPrompt, String userPrompt, Integer maxTokens) throws Exception {
         ObjectNode body = objectMapper.createObjectNode();
-        body.put("model", ai.model());
+        body.put("model", model);
         body.put("temperature", 0);
+        if (maxTokens != null) {
+            body.put("max_tokens", maxTokens);
+        }
 
         ArrayNode messages = body.putArray("messages");
         ObjectNode system = messages.addObject();
         system.put("role", "system");
-        system.put("content", "你是成绩表结构识别助手。只返回一个 JSON 对象，不要 Markdown，不要解释。");
+        system.put("content", systemPrompt);
 
         ObjectNode user = messages.addObject();
         user.put("role", "user");
-        user.put("content", buildPrompt(type, headers, samples));
+        user.put("content", userPrompt);
 
-        String url = ai.baseUrl().replaceAll("/+$", "") + "/chat/completions";
+        String url = baseUrl.replaceAll("/+$", "") + "/chat/completions";
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
                 .timeout(Duration.ofSeconds(Math.max(2, timeoutSeconds)))
                 .header("Content-Type", "application/json");
-        if (StringUtils.hasText(ai.apiKey())) {
-            builder.header("Authorization", "Bearer " + ai.apiKey());
+        if (StringUtils.hasText(apiKey)) {
+            builder.header("Authorization", "Bearer " + apiKey);
         }
         HttpRequest request = builder
                 .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body), StandardCharsets.UTF_8))

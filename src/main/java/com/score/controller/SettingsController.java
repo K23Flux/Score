@@ -6,10 +6,13 @@ import com.score.entity.Admin;
 import com.score.entity.OAuthState;
 import com.score.entity.bo.AcademicTermBo;
 import com.score.entity.bo.AiSettingsBo;
+import com.score.entity.bo.AiTestBo;
 import com.score.entity.bo.GithubSettingsBo;
 import com.score.mapper.AdminMapper;
 import com.score.service.AdminGuardService;
+import com.score.service.AiColumnMapper;
 import com.score.service.AiSettings;
+import com.score.service.AiTestResult;
 import com.score.service.GithubOAuthService;
 import com.score.service.OAuthStoreService;
 import com.score.service.SettingsService;
@@ -46,6 +49,24 @@ public class SettingsController {
     private OAuthStoreService oauthStoreService;
     @Autowired
     private AdminMapper adminMapper;
+    @Autowired
+    private AiColumnMapper aiColumnMapper;
+
+    /** 测试 AI 接口连通性；未填的字段使用已保存配置。 */
+    @PostMapping("/ai/test")
+    public ResultVo<?> testAi(@RequestBody(required = false) AiTestBo bo) {
+        adminGuardService.requireAdmin();
+        AiTestResult result = aiColumnMapper.test(
+                bo == null ? null : bo.getBaseUrl(),
+                bo == null ? null : bo.getModel(),
+                bo == null ? null : bo.getApiKey());
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("ok", result.ok());
+        data.put("latencyMs", result.latencyMs());
+        data.put("reply", result.reply());
+        data.put("error", result.error());
+        return ResultVo.success(data);
+    }
 
     @GetMapping("/github")
     public ResultVo<?> getGithubBinding() {

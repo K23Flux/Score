@@ -33,6 +33,18 @@ public class Student {
      */
     private String idCard;
 
+    /** 学生手机号 */
+    private String phone;
+
+    /** 家长姓名 */
+    private String parentName;
+
+    /** 家长手机号 */
+    private String parentPhone;
+
+    /** 与学生的关系，如 父亲 / 母亲 / 其他 */
+    private String parentRelation;
+
     /** 学年，例如 2026-2027 */
     private String academicYear;
 

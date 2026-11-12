@@ -24,7 +24,7 @@
 | 角色 | 功能 |
 |------|------|
 | **学生** | 无需登录，选择学年学期后凭姓名 + 身份证号查询个人成绩；按考试分组展示各科分数、总分与平均分；彩色等级标识（优秀/良好/及格/不及格） |
-| **教师** | 工作台总览、按学生/考试搜索成绩、Excel 批量导入学生与成绩数据（列映射预览、逐行校验）、分页浏览学生名单、教师账号 CRUD；按班级和学年学期隔离数据 |
+| **教师** | 工作台总览、按学生/考试搜索成绩、Excel 批量导入学生与成绩数据（列映射预览、逐行校验）、分页浏览学生名单并编辑学生/家长联系方式、教师账号 CRUD；按班级和学年学期隔离数据 |
 | **管理员** | 在「设置」页配置 AI 表头识别（OpenAI 兼容接口、模型、密钥），管理学年学期（新增、设为当前），绑定 GitHub 账号后用 GitHub 登录；设置入口仅 `admin` 角色可见 |
 
 ## 技术栈
@@ -90,7 +90,7 @@ Score/
 | 表名 | 说明 | 关键字段 |
 |------|------|----------|
 | `admin` | 教师/管理员账号 | username, password (BCrypt), className, role (`admin` / `teacher`), delFlag |
-| `student` | 学生信息（按学期） | studentName, className, idCard, academicYear, semester, delFlag |
+| `student` | 学生信息（按学期） | studentName, className, idCard, phone, parentName, parentPhone, parentRelation, academicYear, semester, delFlag |
 | `score` | 成绩记录（按学期） | studentName, className, idCard, academicYear, semester, examName, subject, score, delFlag |
 | `academic_term` | 学年学期 | academicYear (如 `2026-2027`), semester (`1` / `2`), isCurrent, delFlag |
 | `app_setting` | 运行期设置 | settingKey, settingValue, updatedAt（AI 配置等，数据库优先于环境变量） |
@@ -123,6 +123,7 @@ Score/
 | POST | `/scoreCheck/updateUser` | 更新教师信息 | ✅ |
 | DELETE | `/scoreCheck/{userName}` | 删除教师账号（软删） | ✅ |
 | POST | `/scoreCheck/getStudent` | 分页获取学生列表（可按学期） | ✅ |
+| POST | `/scoreCheck/updateStudent` | 编辑学生/家长联系方式 | ✅ |
 | GET / PUT | `/scoreCheck/settings/ai` | 读取 / 保存 AI 表头识别设置 | 仅管理员 |
 | POST | `/scoreCheck/settings/terms` | 新增学年学期 | 仅管理员 |
 | POST | `/scoreCheck/settings/terms/{id}/current` | 设为当前学期 | 仅管理员 |
@@ -211,10 +212,10 @@ docker-compose up -d
 ## 设计特色
 
 - **学年学期隔离** — 学生、成绩按 `academic_year` + `semester` 存放；教师端和学生查分页都可选择学期，默认当前学期
-- **管理员设置页** — 仅 `admin` 角色可见，可在线配置 AI 表头识别、新增学期和切换当前学期
+- **管理员设置页** — 仅 `admin` 角色可见，可在线配置 AI 表头识别（支持“测试连接”）、新增学期和切换当前学期
 - **GitHub 登录** — Client ID / Secret 和 GitHub 绑定都在管理员「设置」页完成，保存即生效；未配置时登录按钮隐藏，未绑定的 GitHub 账号无法登录
 - **自适应滑块验证码** — 首次登录免验证码；同一账号 + IP 连续失败 3 次后才要求，并按 IP 限速
-- **宽松 Excel 导入** — 自动识别标题行和常见表头别名，可手动调整列映射，导入前预览逐行错误；可选 AI 建议映射（只发送表头和脱敏样例）
+- **宽松 Excel 导入** — 自动识别标题行和常见表头别名（含 手机号 / 家长姓名 / 家长手机号 / 关系），可手动调整列映射，导入前预览逐行错误；可选 AI 建议映射（只发送表头和脱敏样例）
 - **多租户隔离** — 基于 MyBatis-Plus 租户插件，教师仅可查看和管理本班数据
 - **终端美学 UI** — IBM Plex Mono 等宽字体 + 琥珀色点缀 + CRT 扫描线效果，工业风终端视觉
 - **亮色 / 暗色主题** — 完整的主题切换支持，适配不同使用场景

@@ -54,9 +54,20 @@ public class ExcelImportService {
             "身份证", "身份证号", "身份证号码", "证件号", "证件号码", "idcard", "id");
     private static final Set<String> CLASS_HEADERS = Set.of(
             "班级", "班别", "班", "class", "classname");
+    private static final Set<String> STUDENT_PHONE_HEADERS = Set.of(
+            "手机号", "手机", "学生手机号", "学生电话", "联系电话", "电话", "studentphone", "phone", "mobile");
+    private static final Set<String> PARENT_NAME_HEADERS = Set.of(
+            "家长姓名", "家长", "联系人", "监护人", "监护人姓名", "父亲姓名", "母亲姓名", "parentname");
+    private static final Set<String> PARENT_PHONE_HEADERS = Set.of(
+            "家长手机号", "家长电话", "家长联系方式", "监护人电话", "父亲电话", "母亲电话", "parentphone");
+    private static final Set<String> RELATION_HEADERS = Set.of(
+            "家长关系", "关系", "称谓", "与学生关系", "家长身份", "relation");
     private static final Set<String> RESERVED_HEADERS = Set.of(
             "序号", "学号", "总分", "总成绩", "平均分", "备注", "排名", "名次", "等级",
             "年级", "考试", "考试名称", "考场", "座位号", "性别", "电话", "联系方式",
+            "手机号", "手机", "学生手机号", "学生电话", "家长姓名", "家长", "联系人",
+            "家长手机号", "家长电话", "家长联系方式", "监护人", "监护人电话", "监护人姓名",
+            "父亲姓名", "母亲姓名", "父亲电话", "母亲电话", "家长关系", "关系", "称谓", "与学生关系",
             "班级", "班别", "班", "class", "classname",
             "身份证", "身份证号", "身份证号码", "证件号", "证件号码", "idcard", "id",
             "姓名", "学生姓名", "名字", "学生", "学生名", "name", "studentname", "student");
@@ -175,6 +186,7 @@ public class ExcelImportService {
                     existing.setAcademicYear(term.academicYear());
                     existing.setSemester(term.semester());
                     existing.setDelFlag("0");
+                    applyContact(existing, row);
                     studentMapper.updateById(existing);
                     updated++;
                 } else {
@@ -186,6 +198,7 @@ public class ExcelImportService {
                     student.setSemester(term.semester());
                     student.setDelFlag("0");
                     student.setCreateTime(new Date());
+                    applyContact(student, row);
                     studentMapper.insert(student);
                     inserted++;
                 }
@@ -424,6 +437,10 @@ public class ExcelImportService {
             loadStudents(className, term, studentsById, studentsByName);
         }
 
+        ContactColumns contact = type == ImportType.STUDENT
+                ? resolveContactColumns(sheet.headers)
+                : null;
+
         Set<String> seenIds = new HashSet<>();
         for (int i = 0; i < sheet.dataRows.size(); i++) {
             Map<Integer, String> raw = sheet.dataRows.get(i);
@@ -444,6 +461,27 @@ public class ExcelImportService {
             }
 
             if (type == ImportType.STUDENT) {
+                if (contact != null) {
+                    row.phone = contact.phone == null ? "" : trim(raw.get(contact.phone));
+                    row.parentName = contact.parentName == null ? "" : trim(raw.get(contact.parentName));
+                    row.parentPhone = contact.parentPhone == null ? "" : trim(raw.get(contact.parentPhone));
+                    row.parentRelation = contact.relation == null ? "" : trim(raw.get(contact.relation));
+                    if (!StringUtils.hasText(row.parentRelation)) {
+                        row.parentRelation = contact.defaultRelation == null ? "" : contact.defaultRelation;
+                    }
+                    if (!validPhone(row.phone)) {
+                        errors.add("学生手机号格式不正确");
+                    }
+                    if (!validPhone(row.parentPhone)) {
+                        errors.add("家长手机号格式不正确");
+                    }
+                    if (row.parentName.length() > 64) {
+                        errors.add("家长姓名超过 64 个字符");
+                    }
+                    if (row.parentRelation.length() > 16) {
+                        errors.add("家长关系超过 16 个字符");
+                    }
+                }
                 if (!StringUtils.hasText(row.idCard)) {
                     errors.add("身份证号为空");
                 } else {
@@ -709,11 +747,76 @@ public class ExcelImportService {
         private List<Map<Integer, String>> dataRows;
     }
 
+    private boolean validPhone(String value) {
+        if (!StringUtils.hasText(value)) {
+            return true;
+        }
+        String phone = value.trim();
+        return phone.length() >= 5 && phone.length() <= 20 && phone.matches("[0-9+\\-\\s]+");
+    }
+
+    private void applyContact(Student student, ParsedRow row) {
+        if (StringUtils.hasText(row.phone)) {
+            student.setPhone(row.phone);
+        }
+        if (StringUtils.hasText(row.parentName)) {
+            student.setParentName(row.parentName);
+        }
+        if (StringUtils.hasText(row.parentPhone)) {
+            student.setParentPhone(row.parentPhone);
+        }
+        if (StringUtils.hasText(row.parentRelation)) {
+            student.setParentRelation(row.parentRelation);
+        }
+    }
+
+    private ContactColumns resolveContactColumns(Map<Integer, String> headers) {
+        ContactColumns columns = new ContactColumns();
+        columns.phone = findColumn(headers, STUDENT_PHONE_HEADERS);
+        columns.parentName = findColumn(headers, PARENT_NAME_HEADERS);
+        columns.parentPhone = findColumn(headers, PARENT_PHONE_HEADERS);
+        columns.relation = findColumn(headers, RELATION_HEADERS);
+        if (columns.parentName != null && columns.relation == null) {
+            String header = normalizeHeader(headers.get(columns.parentName));
+            if ("父亲姓名".equals(header)) {
+                columns.defaultRelation = "父亲";
+            } else if ("母亲姓名".equals(header)) {
+                columns.defaultRelation = "母亲";
+            }
+        }
+        return columns;
+    }
+
+    private Integer findColumn(Map<Integer, String> headers, Set<String> aliases) {
+        for (Map.Entry<Integer, String> entry : headers.entrySet()) {
+            if (aliases.contains(normalizeHeader(entry.getValue()))) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    private String normalizeHeader(String value) {
+        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT).replaceAll("\\s+", "");
+    }
+
+    private static class ContactColumns {
+        private Integer phone;
+        private Integer parentName;
+        private Integer parentPhone;
+        private Integer relation;
+        private String defaultRelation;
+    }
+
     private static class ParsedRow {
         private int rowNumber;
         private String studentName;
         private String idCard;
         private String className;
+        private String phone;
+        private String parentName;
+        private String parentPhone;
+        private String parentRelation;
         private final Map<String, String> subjects = new LinkedHashMap<>();
         private final Map<String, BigDecimal> scores = new LinkedHashMap<>();
         private boolean valid;
