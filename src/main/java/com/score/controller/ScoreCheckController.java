@@ -154,7 +154,7 @@ public class ScoreCheckController {
     }
 
     @PostMapping("/updateUser")
-    public ResultVo<?> updateUser(@Valid @RequestBody AdminBo adminBo) {
+    public ResultVo<?> updateUser(@RequestBody AdminBo adminBo) {
         return scoreService.updateUser(adminBo);
     }
 

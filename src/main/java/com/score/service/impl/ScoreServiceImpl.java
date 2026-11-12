@@ -200,15 +200,32 @@ public class ScoreServiceImpl implements IScoreService {
         if (bo == null || !StringUtils.hasText(bo.getUserName())) {
             return ResultVo.error("更新失败：用户名不能为空");
         }
+        String userName = bo.getUserName().trim();
+        String className = bo.getClassName() == null ? "" : bo.getClassName().trim();
+        if (!StringUtils.hasText(className)) {
+            return ResultVo.error("更新失败：班级不能为空");
+        }
+        if (className.length() > 64) {
+            return ResultVo.error("更新失败：班级名称不能超过 64 个字符");
+        }
+
         LambdaQueryWrapper<Admin> lqw = new LambdaQueryWrapper<>();
-        lqw.eq(Admin::getUserName, bo.getUserName()).eq(Admin::getDelFlag, "0");
+        lqw.eq(Admin::getUserName, userName).eq(Admin::getDelFlag, "0");
         Admin admin = adminMapper.selectOne(lqw);
         if (admin == null) {
             return ResultVo.error("更新失败：用户不存在");
         }
-        admin.setClassName(bo.getClassName());
+        admin.setClassName(className);
         int rows = adminMapper.updateById(admin);
-        return rows > 0 ? ResultVo.success("更新成功") : ResultVo.error("更新失败");
+        if (rows <= 0) {
+            return ResultVo.error("更新失败");
+        }
+        // 编辑的是当前登录账户时，同步会话中的班级，避免查询仍按旧班级过滤
+        Object currentUser = StpUtil.getSession().get("userName");
+        if (currentUser != null && userName.equals(currentUser.toString())) {
+            StpUtil.getSession().set("className", className);
+        }
+        return ResultVo.success("更新成功");
     }
 
     @Override

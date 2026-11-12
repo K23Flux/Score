@@ -66,15 +66,16 @@ const openEditDialog = (row: AdminUser) => {
 
 const handleSubmit = async () => {
   if (submitting.value) return
-  formData.userName = formData.userName.trim()
-  formData.className = formData.className.trim()
-
-  formRef.value?.clearValidate()
-  const valid = await formRef.value?.validate().catch(() => false)
-  if (!valid) return
-
   submitting.value = true
+
   try {
+    formData.userName = formData.userName.trim()
+    formData.className = formData.className.trim()
+
+    formRef.value?.clearValidate()
+    const valid = await formRef.value?.validate().catch(() => false)
+    if (!valid) return
+
     if (isEdit.value) {
       await updateUser({ userName: formData.userName, className: formData.className })
       ElMessage.success('账户已更新')

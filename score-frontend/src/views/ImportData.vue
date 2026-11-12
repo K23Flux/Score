@@ -394,6 +394,7 @@ onMounted(() => {
           </div>
 
           <p class="form-hint">{{ activeHint }}</p>
+          <p class="form-hint">AI 表头识别由服务器配置，未启用时使用规则识别。</p>
         </template>
 
         <template v-else>
@@ -403,6 +404,9 @@ onMounted(() => {
               <p>
                 {{ mappingSourceText }}；共 {{ preview.totalRows }} 行，
                 有效 {{ preview.validRows }}，问题 {{ preview.invalidRows }}
+              </p>
+              <p class="ai-state">
+                {{ preview.aiEnabled ? 'AI 表头识别已启用' : 'AI 表头识别未启用（由服务器配置）' }}
               </p>
             </div>
             <el-button link :disabled="importing" @click="removeFile">重新选择文件</el-button>
@@ -726,6 +730,11 @@ onMounted(() => {
   margin: 0;
   font-size: 13px;
   color: var(--color-text-muted);
+}
+
+.preview-head .ai-state {
+  margin-top: 4px;
+  font-size: 12px;
 }
 
 .mapping-grid {
